@@ -77,6 +77,7 @@ function MDChat() {
     try {
       const history = updatedMessages
         .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
+        .filter(m => m.content && m.content.trim())
         .filter((_, idx, arr) => {
           // Anthropic exige que a primeira mensagem seja 'user'
           const firstUser = arr.findIndex(m => m.role === 'user')

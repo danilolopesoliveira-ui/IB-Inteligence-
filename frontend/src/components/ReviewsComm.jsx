@@ -38,9 +38,10 @@ function Thread({ thread }) {
         })),
         { role: 'user', content: text },
       ]
-      // Anthropic exige que a primeira mensagem seja 'user'
-      const firstUser = allMsgs.findIndex(m => m.role === 'user')
-      const history = firstUser >= 0 ? allMsgs.slice(firstUser) : allMsgs
+      // Anthropic exige que a primeira mensagem seja 'user' e que content nao seja vazio
+      const filtered = allMsgs.filter(m => m.content && m.content.trim())
+      const firstUser = filtered.findIndex(m => m.role === 'user')
+      const history = firstUser >= 0 ? filtered.slice(firstUser) : filtered
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -1,7 +1,16 @@
 import { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
-import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS } from '../data/mockData'
+import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIONS } from '../data/mockData'
 
 const AppContext = createContext(null)
+
+function loadOperations() {
+  try {
+    const saved = localStorage.getItem('ib_operations')
+    return saved ? JSON.parse(saved) : OPERATIONS.map(o => ({ ...o }))
+  } catch {
+    return OPERATIONS.map(o => ({ ...o }))
+  }
+}
 
 function loadMessages() {
   try {
@@ -16,6 +25,7 @@ const initialState = {
   currentPage: 'kanban',
   darkMode: true,
   tasks: TASKS.map(t => ({ ...t })),
+  operations: loadOperations(),
   messages: loadMessages(),
   agents: AGENTS.map(a => ({ ...a })),
   training: TRAINING_RECOMMENDATIONS.map(t => ({ ...t })),
@@ -105,6 +115,48 @@ function reducer(state, action) {
         d.id === action.payload ? { ...d, status: 'atendido' } : d
       )
       return { ...state, mdDemands }
+    }
+    case 'OPEN_PROJECT': {
+      const { form, docs } = action.payload
+      const ecmTypes = ['IPO', 'Follow-on', 'Block Trade']
+      const opId = `op_${Date.now()}`
+      const newOp = {
+        id: opId,
+        name: `${form.company} — ${form.opType}`,
+        type: ecmTypes.includes(form.opType) ? 'ECM' : 'DCM',
+        instrument: form.opType,
+        value: parseFloat(form.value) || 0,
+        status: 'Em Estruturacao',
+        stage: 'Etapa 1 — Revisao Documental',
+        company: form.company,
+        cnpj: form.cnpj,
+        sector: form.sector,
+        deadline: form.deadline,
+        rating: form.rating,
+        guarantee: form.guarantee,
+        priority: form.priority,
+        notes: form.notes,
+        agents: form.agents,
+        selectedDocs: form.selectedDocs || [],
+        additionalRequest: form.additionalRequest || '',
+        openedAt: new Date().toISOString(),
+        pendingDocs: docs.filter(d => d.required && d.files.length === 0).map(d => d.label),
+      }
+      const newTask = {
+        id: `task_${opId}`,
+        title: `Etapa 1 — Revisao Documental: ${form.company}`,
+        agent: 'md_orchestrator',
+        operation: opId,
+        column: 'Em Analise',
+        difficulty: 3,
+        hoursElapsed: 0,
+        maxHours: 24,
+        log: [{ time: new Date().toISOString(), agent: 'md_orchestrator', type: 'assign', text: `Projeto ${form.company} (${form.opType}) aberto. Prioridade: ${form.priority}. Iniciando pipeline — Etapa 1: Revisao Documental.${newOp.pendingDocs.length > 0 ? ` Documentos pendentes: ${newOp.pendingDocs.join(', ')}.` : ' Todos os documentos recebidos.'}` }],
+      }
+      const operations = [newOp, ...state.operations]
+      const tasks = [newTask, ...state.tasks]
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      return { ...state, operations, tasks }
     }
     case 'ADD_PROPOSAL':
       return { ...state, proposals: [action.payload, ...state.proposals] }

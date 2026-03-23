@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { AGENTS, DOC_CHECKLISTS, OPERATIONS, PENDING_ITEMS, BRL_COMPACT } from '../data/mockData'
-import { ChevronRight, CheckCircle, Clock, XCircle, Download, Upload, Bell, ChevronDown, AlertTriangle, FolderOpen, File } from 'lucide-react'
+import { AGENTS, DOC_CHECKLIST } from '../data/mockData'
+import { CheckCircle, Clock, XCircle, Upload, ChevronDown, AlertTriangle, FolderOpen, File, Plus } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -83,23 +83,18 @@ function StepIdentification({ form, setForm }) {
   )
 }
 
-function StepChecklist({ form }) {
+function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
   const { toast } = useApp()
-  const docs = DOC_CHECKLISTS[form.opType] || DOC_CHECKLISTS['Debentures']
-  const [statuses, setStatuses] = useState(docs.map(() => 'pendente'))
-  const [uploaded, setUploaded] = useState({}) // { docIndex: [{name, size_kb}] }
   const [uploading, setUploading] = useState(null)
   const fileRefs = useRef({})
 
-  const cycle = (i) => {
-    const next = { pendente: 'recebido', recebido: 'na', na: 'pendente' }
-    setStatuses(prev => prev.map((s, idx) => idx === i ? next[s] : s))
-  }
-
-  const handleUpload = async (i, file) => {
-    if (!file) return
+  const handleUpload = async (idx, file) => {
+    const doc = DOC_CHECKLIST[idx]
+    if (!file || !doc) return
+    const currentFiles = uploadedDocs[idx]?.files || []
+    if (currentFiles.length >= doc.maxFiles) return
     const company = form.company || 'empresa'
-    setUploading(i)
+    setUploading(idx)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -107,25 +102,26 @@ function StepChecklist({ form }) {
       const res = await fetch(`${API}/api/upload`, { method: 'POST', body: fd })
       const data = await res.json()
       if (data.ok) {
-        setUploaded(prev => ({ ...prev, [i]: [...(prev[i] || []), { name: data.file, size_kb: data.size_kb }] }))
-        setStatuses(prev => prev.map((s, idx) => idx === i ? 'recebido' : s))
-        toast(`Salvo em uploads/${company.toLowerCase().replace(/\s+/g, '_')}/`, 'success')
+        setUploadedDocs(prev => ({
+          ...prev,
+          [idx]: { ...doc, files: [...(prev[idx]?.files || []), { name: data.file, size_kb: data.size_kb }] }
+        }))
+        toast(`${doc.label} — arquivo salvo`, 'success')
       }
     } catch {
-      toast('Erro ao fazer upload — verifique se o servidor esta rodando', 'error')
+      toast('Erro ao fazer upload', 'error')
     } finally {
       setUploading(null)
+      if (fileRefs.current[idx]) fileRefs.current[idx].value = ''
     }
   }
-
-  const icons = { recebido: CheckCircle, pendente: Clock, na: XCircle }
-  const colors = { recebido: 'text-accent-green', pendente: 'text-gold', na: 'text-gray-500' }
-  const labels = { recebido: 'Recebido', pendente: 'Pendente', na: 'N/A' }
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-gray-400">Clique no status para alternar · Documentos para: <span className="text-gold">{form.opType}</span></p>
+        <p className="text-xs text-gray-400">
+          Ate <span className="text-gold">5 arquivos</span> por item · Pendentes nao bloqueiam o fluxo
+        </p>
         {form.company && (
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-surface-100 px-2.5 py-1 rounded-lg">
             <FolderOpen size={11} className="text-gold" />
@@ -133,32 +129,41 @@ function StepChecklist({ form }) {
           </div>
         )}
       </div>
-      {docs.map((doc, i) => {
-        const Icon = icons[statuses[i]]
-        const files = uploaded[i] || []
+      {DOC_CHECKLIST.map((doc, idx) => {
+        const files = uploadedDocs[idx]?.files || []
+        const atLimit = files.length >= doc.maxFiles
+        const hasFiles = files.length > 0
         return (
-          <div key={i} className="card-hover p-3">
+          <div key={doc.id} className="card-hover p-3">
             <div className="flex items-center gap-3">
-              <button onClick={() => cycle(i)} className={`${colors[statuses[i]]} flex-shrink-0`}><Icon size={18} /></button>
-              <span className="text-sm text-gray-200 flex-1">{doc}</span>
-              <span className={`text-[10px] font-medium ${colors[statuses[i]]}`}>{labels[statuses[i]]}</span>
-              <button className="btn-ghost p-1" title="Download template"><Download size={14} /></button>
+              {hasFiles
+                ? <CheckCircle size={18} className="text-accent-green flex-shrink-0" />
+                : <Clock size={18} className={`flex-shrink-0 ${doc.required ? 'text-gold' : 'text-gray-500'}`} />
+              }
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-200">{doc.label}</span>
+                  {!doc.required && <span className="text-[9px] text-gray-500 bg-surface-200 px-1.5 py-0.5 rounded">Opcional</span>}
+                  {doc.hint && doc.required && <span className="text-[9px] text-gray-500">{doc.hint}</span>}
+                </div>
+              </div>
+              <span className="text-[10px] text-gray-500 font-medium">{files.length}/{doc.maxFiles}</span>
               <input
                 type="file"
-                ref={el => fileRefs.current[i] = el}
+                ref={el => fileRefs.current[idx] = el}
                 className="hidden"
-                onChange={e => handleUpload(i, e.target.files[0])}
+                onChange={e => handleUpload(idx, e.target.files[0])}
               />
               <button
-                className={`btn-ghost p-1 ${uploading === i ? 'animate-pulse text-gold' : ''}`}
-                title="Upload documento"
-                onClick={() => fileRefs.current[i]?.click()}
-                disabled={uploading !== null}
+                className={`btn-ghost p-1 flex items-center gap-1 text-[10px] ${uploading === idx ? 'animate-pulse text-gold' : atLimit ? 'opacity-30 cursor-not-allowed' : ''}`}
+                title={atLimit ? 'Limite de 5 arquivos atingido' : 'Adicionar arquivo'}
+                onClick={() => !atLimit && fileRefs.current[idx]?.click()}
+                disabled={uploading !== null || atLimit}
               >
-                <Upload size={14} />
+                <Plus size={13} /><Upload size={13} />
               </button>
             </div>
-            {files.length > 0 && (
+            {hasFiles && (
               <div className="mt-2 ml-7 flex flex-wrap gap-1.5">
                 {files.map((f, j) => (
                   <span key={j} className="flex items-center gap-1 text-[10px] text-accent-green bg-accent-green/10 px-2 py-0.5 rounded">
@@ -174,7 +179,38 @@ function StepChecklist({ form }) {
   )
 }
 
+const ECM_TYPES = ['IPO', 'Follow-on', 'Block Trade']
+
+const OUTPUT_DOCS_MAP = {
+  shared: [
+    { id: 'research',  label: 'Research Report',        format: 'PDF' },
+    { id: 'modelo',    label: 'Modelagem Financeira',    format: 'XLSX' },
+  ],
+  DCM: [
+    { id: 'viab_dcm',    label: 'Relatorio de Viabilidade DCM', format: 'XLSX+PPTX' },
+    { id: 'book_credito', label: 'Book de Credito',             format: 'PPTX' },
+    { id: 'teaser_dcm',  label: 'Teaser',                       format: 'PPTX' },
+  ],
+  ECM: [
+    { id: 'viab_ecm', label: 'Relatorio de Viabilidade ECM', format: 'XLSX+PPTX' },
+    { id: 'cim',      label: 'CIM',                           format: 'PPTX' },
+    { id: 'teaser_ecm', label: 'Teaser',                      format: 'PPTX' },
+  ],
+}
+
 function StepAgents({ form, setForm }) {
+  const isECM = ECM_TYPES.includes(form.opType)
+  const docList = [...OUTPUT_DOCS_MAP.shared, ...(isECM ? OUTPUT_DOCS_MAP.ECM : OUTPUT_DOCS_MAP.DCM)]
+
+  // Default: all docs selected if not yet set for this opType
+  const defaultSelected = docList.map(d => d.id)
+  const selectedDocs = form.selectedDocs?.length > 0 ? form.selectedDocs : defaultSelected
+
+  const toggleDoc = (id) => {
+    const next = selectedDocs.includes(id) ? selectedDocs.filter(x => x !== id) : [...selectedDocs, id]
+    setForm({ ...form, selectedDocs: next })
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -197,6 +233,41 @@ function StepAgents({ form, setForm }) {
           ))}
         </div>
       </div>
+
+      <div>
+        <label className="text-xs text-gray-400 mb-2 block">
+          Documentos a Produzir
+          <span className="ml-2 text-[10px] text-gray-600 normal-case">Pre-selecionados para {isECM ? 'ECM' : 'DCM'} — desmarque os que nao deseja</span>
+        </label>
+        <div className="space-y-1.5">
+          {docList.map(doc => {
+            const checked = selectedDocs.includes(doc.id)
+            return (
+              <label key={doc.id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${checked ? 'border-gold/30 bg-gold/5' : 'border-surface-200 opacity-50'}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleDoc(doc.id)}
+                  className="accent-yellow-500"
+                />
+                <span className="text-xs text-gray-200 flex-1">{doc.label}</span>
+                <span className="text-[10px] text-gray-500 font-mono">{doc.format}</span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-400 mb-1 block">Solicitacao Adicional ao Sistema</label>
+        <textarea
+          className="input-field h-16 resize-none"
+          value={form.additionalRequest || ''}
+          onChange={e => setForm({ ...form, additionalRequest: e.target.value })}
+          placeholder="Ex: incluir analise de sensibilidade de taxa, comparativo com peers setoriais..."
+        />
+      </div>
+
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Prioridade</label>
         <div className="flex gap-2">
@@ -220,71 +291,74 @@ function StepAgents({ form, setForm }) {
 }
 
 function PendingPanel() {
-  const { toast } = useApp()
+  const { state } = useApp()
   const [expanded, setExpanded] = useState(null)
+  const userOps = state.operations.filter(op => op.pendingDocs)
 
-  const byOp = OPERATIONS.map(op => ({
-    ...op,
-    pendencies: PENDING_ITEMS.filter(p => p.operation === op.id),
-  }))
-
-  const statusColors = { atrasado: 'text-accent-red', pendente: 'text-gold', em_andamento: 'text-accent-blue' }
-  const statusLabels = { atrasado: 'Atrasado', pendente: 'Pendente', em_andamento: 'Em Andamento' }
+  if (userOps.length === 0) return null
 
   return (
     <div className="mt-8">
-      <p className="section-title">Pendencias por Operacao</p>
+      <p className="section-title">Documentos Pendentes por Projeto</p>
       <div className="space-y-3">
-        {byOp.map(op => {
-          const atrasadas = op.pendencies.filter(p => p.status === 'atrasado').length
-          return (
-            <div key={op.id} className="card overflow-hidden">
-              <div
-                className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-100 transition-colors"
-                onClick={() => setExpanded(expanded === op.id ? null : op.id)}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`badge ${op.type === 'DCM' ? 'badge-blue' : 'badge-green'}`}>{op.type}</span>
-                  <h4 className="text-sm font-medium text-white">{op.name}</h4>
-                  <span className="text-xs text-gray-500">{op.pendencies.length} itens</span>
-                  {atrasadas > 0 && <span className="badge-red flex items-center gap-1"><AlertTriangle size={10} />{atrasadas} atrasados</span>}
-                </div>
-                <ChevronDown size={16} className={`text-gray-500 transition-transform ${expanded === op.id ? 'rotate-180' : ''}`} />
+        {userOps.map(op => (
+          <div key={op.id} className="card overflow-hidden">
+            <div
+              className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-100 transition-colors"
+              onClick={() => setExpanded(expanded === op.id ? null : op.id)}
+            >
+              <div className="flex items-center gap-3">
+                <span className={`badge ${op.type === 'DCM' ? 'badge-blue' : 'badge-green'}`}>{op.type}</span>
+                <h4 className="text-sm font-medium text-white">{op.name}</h4>
+                {op.pendingDocs.length > 0
+                  ? <span className="flex items-center gap-1 text-[10px] text-gold"><AlertTriangle size={10} />{op.pendingDocs.length} pendentes</span>
+                  : <span className="text-[10px] text-accent-green">Documentacao completa</span>
+                }
               </div>
-              {expanded === op.id && (
-                <div className="border-t border-surface-200 px-4 pb-3">
-                  {op.pendencies.map(p => (
-                    <div key={p.id} className="flex items-center gap-3 py-2.5 border-b border-surface-200/50 last:border-0">
-                      <div className="flex-1">
-                        <p className="text-xs text-gray-200">{p.item}</p>
-                        <p className="text-[10px] text-gray-500">Responsavel: {p.responsible === 'cliente' ? 'Cliente' : 'Equipe Interna'} · Prazo: {p.deadline}</p>
-                      </div>
-                      <span className={`text-[10px] font-medium ${statusColors[p.status]}`}>{statusLabels[p.status]}</span>
-                      <button onClick={() => toast('Lembrete enviado', 'info')} className="btn-ghost p-1" title="Enviar lembrete"><Bell size={13} /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <ChevronDown size={16} className={`text-gray-500 transition-transform ${expanded === op.id ? 'rotate-180' : ''}`} />
             </div>
-          )
-        })}
+            {expanded === op.id && (
+              <div className="border-t border-surface-200 px-4 pb-3">
+                {op.pendingDocs.length === 0
+                  ? <p className="text-xs text-gray-500 py-3">Todos os documentos foram recebidos.</p>
+                  : op.pendingDocs.map((doc, i) => (
+                    <div key={i} className="flex items-center gap-3 py-2.5 border-b border-surface-200/50 last:border-0">
+                      <Clock size={13} className="text-gold flex-shrink-0" />
+                      <p className="text-xs text-gray-200 flex-1">{doc}</p>
+                      <span className="text-[10px] text-gold">Aguardando envio</span>
+                    </div>
+                  ))
+                }
+                {op.notes && (
+                  <div className="mt-2 p-2 bg-surface-100 rounded text-[11px] text-gray-400">
+                    <span className="text-gray-500">Observacoes: </span>{op.notes}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
+const EMPTY_FORM = { company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantee: '', agents: ['md_orchestrator'], priority: 'Alta', notes: '', selectedDocs: [], additionalRequest: '' }
+
 export default function ProjectOpening() {
-  const { toast } = useApp()
+  const { dispatch, toast } = useApp()
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState({
-    company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantee: '',
-    agents: ['md_orchestrator'], priority: 'Alta', notes: '',
-  })
+  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [uploadedDocs, setUploadedDocs] = useState({})
 
   const submit = () => {
-    toast('Projeto aberto com sucesso! Agentes acionados.', 'info')
+    if (!form.company.trim()) { toast('Informe o nome da empresa', 'error'); return }
+    const docs = DOC_CHECKLIST.map((doc, idx) => ({ ...doc, files: uploadedDocs[idx]?.files || [] }))
+    dispatch({ type: 'OPEN_PROJECT', payload: { form, docs } })
+    toast(`Projeto ${form.company} aberto! Agentes acionados.`, 'info')
     setStep(0)
-    setForm({ company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantee: '', agents: ['md_orchestrator'], priority: 'Alta', notes: '' })
+    setForm({ ...EMPTY_FORM })
+    setUploadedDocs({})
   }
 
   return (
@@ -295,7 +369,7 @@ export default function ProjectOpening() {
       <div className="card p-6">
         <Stepper step={step} setStep={setStep} />
         {step === 0 && <StepIdentification form={form} setForm={setForm} />}
-        {step === 1 && <StepChecklist form={form} />}
+        {step === 1 && <StepChecklist form={form} uploadedDocs={uploadedDocs} setUploadedDocs={setUploadedDocs} />}
         {step === 2 && <StepAgents form={form} setForm={setForm} />}
 
         <div className="flex justify-between mt-6 pt-4 border-t border-surface-200">
