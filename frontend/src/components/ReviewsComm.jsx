@@ -50,9 +50,11 @@ function Thread({ thread }) {
         }),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
+      if (!data.text) throw new Error('Resposta vazia do servidor')
       dispatch({ type: 'ADD_AGENT_RESPONSE', payload: { threadId: thread.id, agentId: thread.agent, text: data.text } })
-    } catch {
-      toast('Erro ao obter resposta do agente', 'error')
+    } catch (err) {
+      toast(`Erro: ${err.message}`, 'error')
     } finally {
       setLoading(false)
     }

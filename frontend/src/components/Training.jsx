@@ -88,13 +88,15 @@ function MDChat() {
         body: JSON.stringify({ messages: history }),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
+      if (!data.text) throw new Error('Resposta vazia do servidor')
       setMessages(prev => [...prev, {
         from: 'md_orchestrator',
         text: data.text,
         time: new Date().toISOString(),
       }])
-    } catch {
-      toast('Erro ao conectar com o MD — verifique se o servidor esta rodando', 'error')
+    } catch (err) {
+      toast(`Erro: ${err.message}`, 'error')
     } finally {
       setLoading(false)
     }
