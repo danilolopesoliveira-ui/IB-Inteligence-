@@ -75,10 +75,13 @@ function MDChat() {
     setInput('')
     setLoading(true)
     try {
-      const history = updatedMessages.map(m => ({
-        role: m.from === 'user' ? 'user' : 'assistant',
-        content: m.text,
-      }))
+      const history = updatedMessages
+        .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }))
+        .filter((_, idx, arr) => {
+          // Anthropic exige que a primeira mensagem seja 'user'
+          const firstUser = arr.findIndex(m => m.role === 'user')
+          return idx >= firstUser
+        })
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

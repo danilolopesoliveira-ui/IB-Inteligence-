@@ -31,13 +31,16 @@ function Thread({ thread }) {
     setReply('')
     setLoading(true)
     try {
-      const history = [
+      const allMsgs = [
         ...thread.messages.map(m => ({
           role: m.from === 'user' ? 'user' : 'assistant',
           content: m.text,
         })),
         { role: 'user', content: text },
       ]
+      // Anthropic exige que a primeira mensagem seja 'user'
+      const firstUser = allMsgs.findIndex(m => m.role === 'user')
+      const history = firstUser >= 0 ? allMsgs.slice(firstUser) : allMsgs
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
