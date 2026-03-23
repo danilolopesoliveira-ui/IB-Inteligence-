@@ -229,10 +229,11 @@ async def chat_with_md(payload: dict):
     try:
         client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
         history = payload.get("messages", [])
+        system = payload.get("system_prompt") or MD_SYSTEM_PROMPT
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
-            system=MD_SYSTEM_PROMPT,
+            system=system,
             messages=history,
         )
         return {"text": response.content[0].text}

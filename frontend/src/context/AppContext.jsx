@@ -1,13 +1,22 @@
-import { createContext, useContext, useReducer, useCallback } from 'react'
+import { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
 import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS } from '../data/mockData'
 
 const AppContext = createContext(null)
+
+function loadMessages() {
+  try {
+    const saved = localStorage.getItem('ib_thread_messages')
+    return saved ? JSON.parse(saved) : MESSAGES.map(m => ({ ...m, messages: m.messages.map(msg => ({ ...msg })) }))
+  } catch {
+    return MESSAGES.map(m => ({ ...m, messages: m.messages.map(msg => ({ ...msg })) }))
+  }
+}
 
 const initialState = {
   currentPage: 'kanban',
   darkMode: true,
   tasks: TASKS.map(t => ({ ...t })),
-  messages: MESSAGES.map(m => ({ ...m, messages: m.messages.map(msg => ({ ...msg })) })),
+  messages: loadMessages(),
   agents: AGENTS.map(a => ({ ...a })),
   training: TRAINING_RECOMMENDATIONS.map(t => ({ ...t })),
   mdDemands: MD_DEMANDS.map(d => ({ ...d })),
@@ -58,6 +67,25 @@ function reducer(state, action) {
         }
         return m
       })
+      try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
+      return { ...state, messages }
+    }
+    case 'ADD_AGENT_RESPONSE': {
+      const messages = state.messages.map(m => {
+        if (m.id === action.payload.threadId) {
+          return {
+            ...m,
+            messages: [...m.messages, {
+              from: action.payload.agentId,
+              text: action.payload.text,
+              time: new Date().toISOString(),
+              type: 'resposta',
+            }],
+          }
+        }
+        return m
+      })
+      try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
       return { ...state, messages }
     }
     case 'UPDATE_AGENT': {

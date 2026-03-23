@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext'
 import { AGENTS, OPERATIONS } from '../data/mockData'
 import { Send, Filter, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search } from 'lucide-react'
 
+const API = import.meta.env.VITE_API_URL || ''
+
 const TYPE_ICONS = {
   duvida: { icon: MessageCircle, label: 'Duvida', cls: 'text-accent-blue' },
   revisao: { icon: RotateCcw, label: 'Revisao', cls: 'text-gold' },
@@ -13,6 +15,7 @@ const TYPE_ICONS = {
 function Thread({ thread }) {
   const { dispatch, toast } = useApp()
   const [reply, setReply] = useState('')
+  const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
 
   const agent = AGENTS.find(a => a.id === thread.agent)
@@ -21,11 +24,35 @@ function Thread({ thread }) {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   useEffect(scrollToBottom, [thread.messages.length])
 
-  const send = () => {
-    if (!reply.trim()) return
-    dispatch({ type: 'SEND_MESSAGE', payload: { threadId: thread.id, text: reply } })
+  const send = async () => {
+    if (!reply.trim() || loading) return
+    const text = reply
+    dispatch({ type: 'SEND_MESSAGE', payload: { threadId: thread.id, text } })
     setReply('')
-    toast('Mensagem enviada', 'info')
+    setLoading(true)
+    try {
+      const history = [
+        ...thread.messages.map(m => ({
+          role: m.from === 'user' ? 'user' : 'assistant',
+          content: m.text,
+        })),
+        { role: 'user', content: text },
+      ]
+      const res = await fetch(`${API}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history,
+          system_prompt: agent?.promptBase || undefined,
+        }),
+      })
+      const data = await res.json()
+      dispatch({ type: 'ADD_AGENT_RESPONSE', payload: { threadId: thread.id, agentId: thread.agent, text: data.text } })
+    } catch {
+      toast('Erro ao obter resposta do agente', 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const urgencyColors = { alta: 'badge-red', media: 'badge-gold', baixa: 'badge-green' }
@@ -75,6 +102,15 @@ function Thread({ thread }) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing indicator */}
+      {loading && (
+        <div className="flex gap-3 mb-2">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: agent?.color }}>{agent?.avatar}</div>
+          <div className="bg-surface-100 rounded-xl px-3.5 py-2.5 text-xs text-gray-400 flex items-center gap-1">
+            <span className="animate-pulse">●</span><span className="animate-pulse" style={{animationDelay:'0.2s'}}>●</span><span className="animate-pulse" style={{animationDelay:'0.4s'}}>●</span>
+          </div>
+        </div>
+      )}
       {/* Input */}
       <div className="flex items-center gap-2 pt-3 border-t border-surface-200">
         <input
@@ -83,8 +119,9 @@ function Thread({ thread }) {
           value={reply}
           onChange={e => setReply(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
+          disabled={loading}
         />
-        <button onClick={send} className="btn-primary p-2"><Send size={16} /></button>
+        <button onClick={send} className="btn-primary p-2" disabled={loading}><Send size={16} /></button>
       </div>
     </div>
   )

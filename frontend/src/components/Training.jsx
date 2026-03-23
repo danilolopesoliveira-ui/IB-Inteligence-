@@ -54,11 +54,17 @@ function RecommendationsPanel() {
 
 function MDChat() {
   const { toast } = useApp()
-  const [messages, setMessages] = useState(MD_CHAT_HISTORY.map(m => ({ ...m })))
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ib_md_chat')
+      return saved ? JSON.parse(saved) : MD_CHAT_HISTORY.map(m => ({ ...m }))
+    } catch { return MD_CHAT_HISTORY.map(m => ({ ...m })) }
+  })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const endRef = useRef(null)
 
+  useEffect(() => { try { localStorage.setItem('ib_md_chat', JSON.stringify(messages)) } catch {} }, [messages])
   useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), [messages.length])
 
   const send = async () => {
