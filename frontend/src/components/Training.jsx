@@ -96,7 +96,13 @@ function MDChat() {
         time: new Date().toISOString(),
       }])
     } catch (err) {
+      console.error('[MDChat] Erro:', err)
       toast(`Erro: ${err.message}`, 'error')
+      setMessages(prev => [...prev, {
+        from: 'md_orchestrator',
+        text: `[Erro de conexao: ${err.message}]`,
+        time: new Date().toISOString(),
+      }])
     } finally {
       setLoading(false)
     }

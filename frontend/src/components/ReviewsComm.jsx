@@ -54,7 +54,13 @@ function Thread({ thread }) {
       if (!data.text) throw new Error('Resposta vazia do servidor')
       dispatch({ type: 'ADD_AGENT_RESPONSE', payload: { threadId: thread.id, agentId: thread.agent, text: data.text } })
     } catch (err) {
+      console.error('[Thread] Erro:', err)
       toast(`Erro: ${err.message}`, 'error')
+      dispatch({ type: 'ADD_AGENT_RESPONSE', payload: {
+        threadId: thread.id,
+        agentId: thread.agent,
+        text: `[Erro de conexao: ${err.message}]`,
+      }})
     } finally {
       setLoading(false)
     }
