@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+*.egg-info/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Uploads (filesystem efemero no Render)
+uploads/
+
+# Outputs locais
+output/
+memory/chroma/
+
+# Grandes arquivos de modelo ML (nao necessarios para o dashboard)
+*.bin
+*.pt
+*.onnx
+
+# Livros e PDFs de referencia (grandes demais para o repo)
+knowledge/references/pitch_books/
+knowledge/references/financial_models/dcm/Modelo/
+
+# OS
+.DS_Store
+Thumbs.db

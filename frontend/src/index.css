@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a4e; }
+  body { overflow: hidden; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-50 border border-surface-200 rounded-lg;
+  }
+  .card-hover {
+    @apply card transition-all duration-200;
+  }
+  .card-hover:hover {
+    @apply border-gold/30 shadow-lg shadow-gold/5;
+  }
+  .badge {
+    @apply text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full;
+  }
+  .badge-gold {
+    @apply badge bg-gold/20 text-gold;
+  }
+  .badge-blue {
+    @apply badge bg-accent-blue/20 text-accent-blue;
+  }
+  .badge-green {
+    @apply badge bg-accent-green/20 text-accent-green;
+  }
+  .badge-red {
+    @apply badge bg-accent-red/20 text-accent-red;
+  }
+  .badge-purple {
+    @apply badge bg-accent-purple/20 text-accent-purple;
+  }
+  .btn-primary {
+    @apply px-4 py-2 bg-gold text-black font-semibold rounded-lg text-sm
+           hover:bg-gold-light transition-colors duration-150;
+  }
+  .btn-ghost {
+    @apply px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-surface-100
+           rounded-lg transition-colors duration-150;
+  }
+  .input-field {
+    @apply w-full bg-surface border border-surface-200 rounded-lg px-3 py-2
+           text-sm text-gray-200 placeholder-gray-500
+           focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/20
+           transition-colors;
+  }
+  .section-title {
+    @apply text-xs font-bold uppercase tracking-[0.15em] text-gray-500 mb-3;
+  }
+}

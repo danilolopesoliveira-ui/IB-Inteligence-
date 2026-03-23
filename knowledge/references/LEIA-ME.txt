@@ -1,0 +1,59 @@
+==============================================================
+  BASE DE CONHECIMENTO — Modelos de Referência IB-Agents
+==============================================================
+
+ONDE COLOCAR SEUS ARQUIVOS
+---------------------------
+
+  pitch_books/
+    → PDFs de pitch books, CIMs (Confidential Information Memoranda),
+      teaser decks de bancos de investimento.
+    → Exemplos: apresentações da Goldman Sachs, BTG Pactual, Itaú BBA,
+      Morgan Stanley para M&A, IPO, PE.
+    → O sistema extrai: estrutura de slides, narrativa financeira,
+      linguagem de apresentação, metodologias de valuation usadas.
+
+  financial_models/
+    → Arquivos Excel de modelos financeiros padrão de mercado.
+    → Exemplos: modelos DCF, LBO, M&A accretion/dilution,
+      credit models, trading comps.
+    → O sistema extrai: estrutura de abas, fórmulas e lógica,
+      linhas de projeção, convenções de formatação.
+
+  research_reports/
+    → PDFs de research reports de equity research, relatórios setoriais,
+      memos de due diligence, credit opinions.
+    → Exemplos: relatórios de sell-side de corretoras (XP, Bradesco BBI,
+      Safra), relatórios setoriais de PE (Bain, McKinsey), S&P/Moody's.
+    → O sistema extrai: estrutura de análise, métricas setoriais,
+      benchmarks, linguagem técnica e conclusões.
+
+APÓS ADICIONAR OS ARQUIVOS
+---------------------------
+Execute para processar e indexar:
+
+    py ingest_knowledge.py
+
+Para verificar o que foi indexado:
+
+    py ingest_knowledge.py --list
+
+Para reprocessar tudo do zero:
+
+    py ingest_knowledge.py --reset
+
+FORMATOS SUPORTADOS
+-------------------
+  ✓ PDF  (.pdf)
+  ✓ Excel (.xlsx, .xls)
+  ✓ Word  (.docx)  [requer python-docx]
+  ✓ Texto (.txt, .md)
+
+DICAS DE QUALIDADE
+------------------
+  • Quanto mais arquivos de referência, melhor a qualidade dos outputs.
+  • Prefira documentos em português para M&A Brasil.
+  • Arquivos anonimizados são suficientes — o sistema não precisa de dados
+    reais de clientes, apenas da estrutura e metodologia.
+  • Mínimo recomendado: 3-5 pitch books + 2-3 modelos Excel + 5 research reports.
+==============================================================
