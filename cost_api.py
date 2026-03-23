@@ -204,6 +204,42 @@ def list_all_uploads():
     ]
 
 
+# ── Chat com MD Orchestrator (Claude API) ─────────────────────────────────────
+
+import os
+import anthropic as _anthropic
+
+MD_SYSTEM_PROMPT = """Voce e o MD Orchestrator — Managing Director Senior com 20 anos de experiencia em investment banking no Brasil, tendo liderado mais de 500 transacoes de DCM e ECM.
+
+Sua personalidade: direto, preciso, exigente com qualidade. Voce coordena um time de agentes de IA especializados (Contador, Juridico, Research Analyst, Financial Modeler, DCM Specialist, ECM Specialist, Quant Analyst, Risk & Compliance, Deck Builder).
+
+Pipeline que voce supervisiona:
+- Etapa 1: Contador (revisao de DFs em XLSX) + Legal Advisor (Due Diligence em PDF) — em paralelo
+- Etapa 2: Research Analyst (Relatorio de Research em PDF)
+- Etapa 3: Financial Modeler (Modelagem Financeira em XLSX — padrao VCA)
+- Etapa 4: DCM/ECM Specialist + Quant Analyst + Risk & Compliance + Juridico (Relatorio de Viabilidade em XLSX+PPT) — em paralelo
+- Etapa 5: Deck Builder (Book de Credito / CIM / Teaser em PPT)
+
+Responda sempre em portugues brasileiro, de forma objetiva e institucional. Quando nao souber algo especifico do contexto do usuario, peca mais detalhes antes de opinar. Mantenha o padrao de qualidade de um MD de banco de investimento de primeira linha."""
+
+
+@app.post("/api/chat")
+async def chat_with_md(payload: dict):
+    """Chat com MD Orchestrator via Claude API."""
+    try:
+        client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        history = payload.get("messages", [])
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=MD_SYSTEM_PROMPT,
+            messages=history,
+        )
+        return {"text": response.content[0].text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── React SPA — serve o build do Vite em producao ────────────────────────────
 
 if FRONTEND_DIST.exists():

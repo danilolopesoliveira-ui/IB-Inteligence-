@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext'
 import { AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, MD_CHAT_HISTORY } from '../data/mockData'
 import { CheckCircle, Clock, Loader, Send, Upload, Link2, BookOpen } from 'lucide-react'
 
+const API = import.meta.env.VITE_API_URL || ''
+
 const STATUS_CONFIG = {
   concluido: { label: 'Concluido', cls: 'badge-green', icon: CheckCircle },
   em_andamento: { label: 'Em Andamento', cls: 'badge-gold', icon: Loader },
@@ -54,21 +56,39 @@ function MDChat() {
   const { toast } = useApp()
   const [messages, setMessages] = useState(MD_CHAT_HISTORY.map(m => ({ ...m })))
   const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
   const endRef = useRef(null)
 
   useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), [messages.length])
 
-  const send = () => {
-    if (!input.trim()) return
-    setMessages(prev => [...prev, { from: 'user', text: input, time: new Date().toISOString() }])
+  const send = async () => {
+    if (!input.trim() || loading) return
+    const userMsg = { from: 'user', text: input, time: new Date().toISOString() }
+    const updatedMessages = [...messages, userMsg]
+    setMessages(updatedMessages)
     setInput('')
-    setTimeout(() => {
+    setLoading(true)
+    try {
+      const history = updatedMessages.map(m => ({
+        role: m.from === 'user' ? 'user' : 'assistant',
+        content: m.text,
+      }))
+      const res = await fetch(`${API}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history }),
+      })
+      const data = await res.json()
       setMessages(prev => [...prev, {
         from: 'md_orchestrator',
-        text: 'Entendido. Vou processar essa informacao e ajustar os parametros de analise. Atualizarei o status em breve.',
+        text: data.text,
         time: new Date().toISOString(),
       }])
-    }, 1500)
+    } catch {
+      toast('Erro ao conectar com o MD — verifique se o servidor esta rodando', 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const mdAgent = AGENTS.find(a => a.id === 'md_orchestrator')
@@ -101,9 +121,17 @@ function MDChat() {
         })}
         <div ref={endRef} />
       </div>
+      {loading && (
+        <div className="flex gap-2.5 mb-2">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0" style={{ background: '#d4a853' }}>MD</div>
+          <div className="bg-surface-100 rounded-xl px-3 py-2 text-xs text-gray-400 flex items-center gap-1">
+            <span className="animate-pulse">●</span><span className="animate-pulse" style={{animationDelay:'0.2s'}}>●</span><span className="animate-pulse" style={{animationDelay:'0.4s'}}>●</span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2">
-        <input className="input-field flex-1" placeholder="Enviar instrucao ao MD..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
-        <button onClick={send} className="btn-primary p-2"><Send size={16} /></button>
+        <input className="input-field flex-1" placeholder="Enviar instrucao ao MD..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} disabled={loading} />
+        <button onClick={send} className="btn-primary p-2" disabled={loading}><Send size={16} /></button>
       </div>
     </div>
   )
