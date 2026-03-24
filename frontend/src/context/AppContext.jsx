@@ -3,6 +3,17 @@ import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIO
 
 const AppContext = createContext(null)
 
+const DATA_VERSION = '2026.04.a'
+function checkAndClearStorage() {
+  if (localStorage.getItem('ib_data_version') !== DATA_VERSION) {
+    localStorage.removeItem('ib_operations')
+    localStorage.removeItem('ib_thread_messages')
+    localStorage.removeItem('ib_md_chat')
+    localStorage.setItem('ib_data_version', DATA_VERSION)
+  }
+}
+checkAndClearStorage()
+
 function loadOperations() {
   try {
     const saved = localStorage.getItem('ib_operations')

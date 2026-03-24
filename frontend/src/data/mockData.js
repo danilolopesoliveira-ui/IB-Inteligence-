@@ -262,7 +262,7 @@ export const PLANNED_AGENTS = []
 // ── OPERACOES ATIVAS ─────────────────────────────────────────────────────────
 
 export const OPERATIONS = [
-  {
+  /*{
     id: 'op_001',
     name: 'Debentures Eneva S.A.',
     type: 'DCM',
@@ -367,85 +367,14 @@ export const OPERATIONS = [
     agentDocs: [
       { name: 'Analise de Lastro — Preliminar', agent: 'financial_modeler', version: 'v0.3', status: 'rascunho', date: '2025-03-15' },
     ],
-  },
+  },*/
 ]
 
 // ── TAREFAS KANBAN ───────────────────────────────────────────────────────────
 
 export const KANBAN_COLUMNS = ['Backlog', 'Em Analise', 'Em Revisao', 'Aguardando Cliente', 'Concluido']
 
-export const TASKS = [
-  { id: 't01', title: 'Modelagem financeira — Debentures Eneva', agent: 'financial_modeler', operation: 'op_001', column: 'Em Analise', difficulty: 4, hoursElapsed: 18, maxHours: 24, log: [
-    { time: '2025-03-05T09:00:00', agent: 'md_orchestrator', type: 'assign', text: 'Tarefa atribuida ao Financial Modeler. Prioridade: alta. Prazo: 24h.' },
-    { time: '2025-03-05T09:15:00', agent: 'financial_modeler', type: 'start', text: 'Iniciando modelagem. Recebendo DFs ajustadas do Accountant — EBITDA normalizado em R$ 320M.' },
-    { time: '2025-03-05T14:30:00', agent: 'financial_modeler', type: 'progress', text: 'Modelo base construido. DCF preliminar: EV range R$ 2.8-3.2Bi. Faltam cenarios de sensibilidade.' },
-    { time: '2025-03-06T10:00:00', agent: 'accountant', type: 'message', text: 'Correcao: ajuste IFRS 16 impacta EBITDA em +R$ 18M. Atualizar modelo com DFs v2.1.' },
-    { time: '2025-03-06T11:30:00', agent: 'financial_modeler', type: 'progress', text: 'Modelo atualizado com IFRS 16 revisado. Novo EBITDA: R$ 338M. Re-rodando cenarios.' },
-    { time: '2025-03-07T08:00:00', agent: 'md_orchestrator', type: 'review', text: 'Revisei o draft. WACC de 12.8% parece adequado para setor eletrico. Adicionar cenario com spread de +50bps.' },
-    { time: '2025-03-07T14:00:00', agent: 'financial_modeler', type: 'progress', text: 'Sensibilidade completa: 15 cenarios (WACC x g). Montando output para Quant Analyst.' },
-  ]},
-  { id: 't02', title: 'Analise de covenants — serie proposta', agent: 'financial_modeler', operation: 'op_001', column: 'Em Revisao', difficulty: 3, hoursElapsed: 8, maxHours: 12, log: [
-    { time: '2025-03-10T09:00:00', agent: 'financial_modeler', type: 'start', text: 'Iniciando analise de covenants. Base: Net Leverage <= 3.5x, EBITDA/Juros >= 2.5x.' },
-    { time: '2025-03-10T15:00:00', agent: 'financial_modeler', type: 'progress', text: 'Simulacao concluida. Net Leverage atual: 2.1x (folga de 1.4x). Coverage: 4.8x. Compliance confortavel em todos os cenarios base.' },
-    { time: '2025-03-11T10:00:00', agent: 'risk_compliance', type: 'message', text: 'Solicito inclusao de covenant de Restricted Payments e cross-default. Padrao de mercado para AA+.' },
-    { time: '2025-03-11T14:00:00', agent: 'financial_modeler', type: 'progress', text: 'Covenants adicionais simulados. Pacote final: Net Leverage, Coverage, RP e Cross-Default. Enviando para revisao MD.' },
-    { time: '2025-03-12T09:00:00', agent: 'md_orchestrator', type: 'review', text: 'Em revisao. Quero ver o impacto do stress test no covenant de leverage — cenario de queda de 20% na receita.' },
-  ]},
-  { id: 't03', title: 'Mapeamento de demanda — 42 instituicoes', agent: 'deck_builder', operation: 'op_001', column: 'Concluido', difficulty: 3, hoursElapsed: 14, maxHours: 16, log: [
-    { time: '2025-03-08T09:00:00', agent: 'deck_builder', type: 'start', text: 'Iniciando mapeamento de investidores para debentures Eneva. Target: fundos de credito privado e pensao.' },
-    { time: '2025-03-09T16:00:00', agent: 'deck_builder', type: 'progress', text: '28 instituicoes mapeadas. Demanda estimada parcial: R$ 950M (1.2x o book).' },
-    { time: '2025-03-10T11:00:00', agent: 'md_orchestrator', type: 'message', text: 'Incluir Previ e Funcef no mapeamento. Ambos tem mandato para setor eletrico.' },
-    { time: '2025-03-11T14:00:00', agent: 'deck_builder', type: 'progress', text: '42 instituicoes mapeadas. Demanda total estimada: R$ 1.4Bi (1.75x). Top 5: Itau Asset, BTG, Previ, XP, Kinea.' },
-    { time: '2025-03-12T09:00:00', agent: 'md_orchestrator', type: 'approve', text: 'Mapeamento aprovado. Excelente cobertura. Prosseguir com bookbuilding strategy.' },
-  ]},
-  { id: 't04', title: 'Revisao de garantias reais — parecer juridico', agent: 'risk_compliance', operation: 'op_001', column: 'Aguardando Cliente', difficulty: 4, hoursElapsed: 6, maxHours: 8, staleHours: 48, log: [
-    { time: '2025-03-14T09:00:00', agent: 'risk_compliance', type: 'start', text: 'Iniciando revisao de garantias. Estrutura proposta: cessao fiduciaria de recebiveis + alienacao fiduciaria de acoes.' },
-    { time: '2025-03-14T16:00:00', agent: 'risk_compliance', type: 'progress', text: 'Analise preliminar concluida. Faltam: parecer juridico do escritorio externo sobre a estrutura de garantias.' },
-    { time: '2025-03-15T10:00:00', agent: 'risk_compliance', type: 'blocked', text: 'BLOQUEIO: Parecer juridico pendente. Solicitado ao cliente em 14/03. Sem retorno ha 48h.' },
-    { time: '2025-03-17T09:00:00', agent: 'md_orchestrator', type: 'escalation', text: 'Escalar com o cliente. Parecer e critico para fechamento do pricing. Prazo maximo: 25/03.' },
-  ]},
-  { id: 't05', title: 'Precificacao spread indicativo DI+', agent: 'financial_modeler', operation: 'op_001', column: 'Em Analise', difficulty: 5, hoursElapsed: 4, maxHours: 10, log: [
-    { time: '2025-03-18T09:00:00', agent: 'dcm_specialist', type: 'start', text: 'Rodando bond_pricing tool. Parametros: DI+spread, 5 anos, AA+, bullet, cessao fiduciaria.' },
-    { time: '2025-03-18T11:00:00', agent: 'dcm_specialist', type: 'progress', text: 'Fair spread estimado: DI+1.52%. Spread oferecido: DI+1.85%. Premium de 33bps vs fair — atrativo para investidores.' },
-    { time: '2025-03-18T14:00:00', agent: 'dcm_specialist', type: 'message', text: 'Comps: CPFL DI+1.78% (AA+, 5y), Taesa DI+1.45% (AAA, 7y). Nosso spread esta em linha com mercado para o rating.' },
-  ]},
-  { id: 't06', title: 'Valuation DCF — SLC Agricola', agent: 'quant_analyst', operation: 'op_002', column: 'Em Revisao', difficulty: 5, hoursElapsed: 32, maxHours: 40, log: [
-    { time: '2025-03-01T09:00:00', agent: 'quant_analyst', type: 'start', text: 'Iniciando DCF. Premissas iniciais: CAGR receita 12%, margem EBITDA → 38% em 2029, WACC 13.2%.' },
-    { time: '2025-03-05T16:00:00', agent: 'quant_analyst', type: 'progress', text: 'Base case: R$ 18.50-21.00/acao. Upside de 15% vs cotacao atual de R$ 17.20.' },
-    { time: '2025-03-10T10:00:00', agent: 'md_orchestrator', type: 'review', text: 'CAGR de 12% parece otimista. Rode bear case 8% e bull case 15%. Confirmar capex 2026 com empresa.' },
-    { time: '2025-03-12T14:00:00', agent: 'quant_analyst', type: 'progress', text: 'Cenarios: Bear R$ 16.20, Base R$ 19.75, Bull R$ 23.80. Capex 2026 de R$ 450M confirmado pela SLC.' },
-    { time: '2025-03-15T09:00:00', agent: 'ecm_specialist', type: 'message', text: 'Rodei ipo_valuation tool. Price range sugerido: R$ 17.50-19.50 (desconto de 5% vs mid para follow-on). Diluicao: 8.2%.' },
-    { time: '2025-03-18T10:00:00', agent: 'md_orchestrator', type: 'review', text: 'Em revisao final. Range adequado. Verificar se equity story esta alinhado com as premissas de valuation.' },
-  ]},
-  { id: 't07', title: 'Equity Story — deck para investidores', agent: 'quant_analyst', operation: 'op_002', column: 'Em Analise', difficulty: 4, hoursElapsed: 20, maxHours: 30, log: [
-    { time: '2025-03-10T09:00:00', agent: 'ecm_specialist', type: 'start', text: 'Montando equity story. Key points: lider em area plantada, produtividade acima da media, hedge natural em USD.' },
-    { time: '2025-03-14T14:00:00', agent: 'ecm_specialist', type: 'progress', text: 'Draft v1 concluido. 15 slides: tese, mercado, financials, valuation, uso de recursos, management.' },
-    { time: '2025-03-17T10:00:00', agent: 'md_orchestrator', type: 'message', text: 'Falta slide de ESG — investidores internacionais vao perguntar. Adicionar metricas de sustentabilidade.' },
-  ]},
-  { id: 't08', title: 'Due diligence — contratos arrendamento', agent: 'risk_compliance', operation: 'op_002', column: 'Em Analise', difficulty: 4, hoursElapsed: 12, maxHours: 20, log: [
-    { time: '2025-03-10T09:00:00', agent: 'risk_compliance', type: 'start', text: 'Analisando contratos de arrendamento da SLC. 47 contratos, cobrindo 180.000 ha.' },
-    { time: '2025-03-15T09:45:00', agent: 'risk_compliance', type: 'alert', text: 'RED FLAG: 3 contratos com clausula de rescisao unilateral — 22% da area. Impacto: R$ 180M no EBITDA.' },
-    { time: '2025-03-15T10:02:00', agent: 'md_orchestrator', type: 'escalation', text: 'CRITICO. Preparar memo com contratos afetados, valor em risco, probabilidade e mitigantes. Prioridade maxima.' },
-    { time: '2025-03-18T14:00:00', agent: 'risk_compliance', type: 'progress', text: 'Memo concluido. Probabilidade de exercicio: baixa (2/3 contratos renovados nos ultimos 10 anos). Mitigante: seguro agrario.' },
-  ]},
-  { id: 't09', title: 'Cap table — modelagem diluicao', agent: 'quant_analyst', operation: 'op_002', column: 'Backlog', difficulty: 3, hoursElapsed: 0, maxHours: 8, log: [] },
-  { id: 't10', title: 'Analise de comparaveis — peers agro B3', agent: 'quant_analyst', operation: 'op_002', column: 'Concluido', difficulty: 3, hoursElapsed: 10, maxHours: 12, log: [
-    { time: '2025-03-02T09:00:00', agent: 'quant_analyst', type: 'start', text: 'Levantando peers agro na B3: SLC, BrasilAgro, Boa Safra, 3Tentos, AgroGalaxy.' },
-    { time: '2025-03-04T16:00:00', agent: 'quant_analyst', type: 'progress', text: 'Multiplos calculados. Mediana EV/EBITDA: 7.5x, P/E: 12.0x. SLC negocia a 6.8x — desconto de 9% vs peers.' },
-    { time: '2025-03-05T10:00:00', agent: 'md_orchestrator', type: 'approve', text: 'Comps aprovados. Desconto justifica tese de upside. Incluir no football field.' },
-  ]},
-  { id: 't11', title: 'Estruturacao lastro CRA — recebiveis Movida', agent: 'financial_modeler', operation: 'op_003', column: 'Em Analise', difficulty: 4, hoursElapsed: 6, maxHours: 16, log: [
-    { time: '2025-03-12T09:00:00', agent: 'financial_modeler', type: 'start', text: 'Analisando recebiveis de locacao da Movida como lastro para CRA. Volume disponivel: R$ 1.2Bi/ano.' },
-    { time: '2025-03-15T14:00:00', agent: 'financial_modeler', type: 'progress', text: 'Amostragem inicial: inadimplencia media 2.3%, prazo medio 18 meses. Lastro parece elegivel para CRA.' },
-  ]},
-  { id: 't12', title: 'Analise documental — DFs Movida 9M24', agent: 'risk_compliance', operation: 'op_003', column: 'Em Analise', difficulty: 2, hoursElapsed: 3, maxHours: 6, log: [
-    { time: '2025-03-13T09:00:00', agent: 'research_analyst', type: 'start', text: 'Parsing das DFs 9M24 da Movida. Arquivo PDF de 82 paginas.' },
-    { time: '2025-03-13T14:00:00', agent: 'research_analyst', type: 'progress', text: 'Parsing concluido. BP, DRE e DFC extraidos. 3 notas explicativas relevantes identificadas.' },
-  ]},
-  { id: 't13', title: 'Parecer final MD — Debentures Eneva', agent: 'md_orchestrator', operation: 'op_001', column: 'Backlog', difficulty: 5, hoursElapsed: 0, maxHours: 6, log: [] },
-  { id: 't14', title: 'Bookbuilding strategy — Eneva', agent: 'deck_builder', operation: 'op_001', column: 'Backlog', difficulty: 4, hoursElapsed: 0, maxHours: 12, log: [] },
-  { id: 't15', title: 'Revisao compliance CVM — Follow-on SLC', agent: 'risk_compliance', operation: 'op_002', column: 'Backlog', difficulty: 3, hoursElapsed: 0, maxHours: 8, log: [] },
-]
+export const TASKS = []
 
 // ── INSTITUICOES FINANCEIRAS ─────────────────────────────────────────────────
 
@@ -521,20 +450,9 @@ export const FUNDS = [
 
 // ── CUSTOS ───────────────────────────────────────────────────────────────────
 
-export const COST_HISTORY = [
-  { month: 'Out/24', real: 28500, projected: 30000 },
-  { month: 'Nov/24', real: 35200, projected: 33000 },
-  { month: 'Dez/24', real: 31800, projected: 34500 },
-  { month: 'Jan/25', real: 42100, projected: 38000 },
-  { month: 'Fev/25', real: 48700, projected: 45000 },
-  { month: 'Mar/25', real: 38900, projected: 50000 },
-]
+export const COST_HISTORY = []
 
-export const COST_BY_OPERATION = [
-  { operationId: 'op_001', totalCost: 52400, costPer100M: 6550 },
-  { operationId: 'op_002', totalCost: 68200, costPer100M: 5683 },
-  { operationId: 'op_003', totalCost: 14800, costPer100M: 3700 },
-]
+export const COST_BY_OPERATION = []
 
 // ── KNOWLEDGE BASE ───────────────────────────────────────────────────────────
 
@@ -579,76 +497,15 @@ export const KNOWLEDGE_ITEMS = [
 
 // ── MENSAGENS / REVISOES ─────────────────────────────────────────────────────
 
-export const MESSAGES = [
-  {
-    id: 'm01', agent: 'financial_modeler', operation: 'op_001', type: 'revisao',
-    subject: 'Revisao do spread indicativo — Debentures Eneva',
-    messages: [
-      { from: 'financial_modeler', text: 'Concluí a modelagem de pricing. O spread indicativo ficou em DI+1,85% a.a. para a serie de 5 anos. Considerando o rating AA+ e o setor eletrico, esta em linha com as ultimas emissoes (Taesa DI+1,78%, CPFL DI+1,92%). Solicito revisao antes de enviar ao cliente.', time: '2025-03-20T10:30:00', type: 'revisao' },
-      { from: 'user', text: 'Bom trabalho. O spread esta coerente. Porem, considere adicionar um cenario com DI+1,95% para negociacao. Tambem quero ver a sensibilidade ao duration — modele 3, 5 e 7 anos.', time: '2025-03-20T11:15:00', type: 'resposta' },
-      { from: 'financial_modeler', text: 'Entendido. Vou rodar os cenarios adicionais. Estimativa de conclusao: 3h. Sobre o cenario de 7 anos, preciso do guidance de taxa pre do Tesouro. Posso usar a curva de ontem?', time: '2025-03-20T11:22:00', type: 'duvida' },
-    ],
-    status: 'aberto', urgency: 'media', unread: 1,
-  },
-  {
-    id: 'm02', agent: 'risk_compliance', operation: 'op_002', type: 'alerta',
-    subject: 'Red Flag — Contratos de arrendamento SLC',
-    messages: [
-      { from: 'risk_compliance', text: '⚠️ ALERTA: Identifiquei clausula de rescisao unilateral em 3 contratos de arrendamento que representam 22% da area plantada. Se exercida pelo arrendador, impacto estimado de R$ 180M no EBITDA projetado. Recomendo disclosure no prospecto e analise juridica aprofundada.', time: '2025-03-20T09:45:00', type: 'alerta' },
-      { from: 'user', text: 'Critico. Escale para o juridico externo. Prepare um memo com: (1) contratos afetados, (2) valor em risco, (3) probabilidade de exercicio, (4) mitigantes. Prioridade maxima.', time: '2025-03-20T10:02:00', type: 'resposta' },
-    ],
-    status: 'aberto', urgency: 'alta', unread: 0,
-  },
-  {
-    id: 'm03', agent: 'deck_builder', operation: 'op_001', type: 'duvida',
-    subject: 'Criterio de alocacao — bookbuilding Eneva',
-    messages: [
-      { from: 'deck_builder', text: 'Mapeei 42 instituicoes potenciais para as debentures Eneva. Demanda estimada: R$ 1,4Bi (1,75x o book). Preciso de guidance: priorizar ticket minimo de R$ 20M ou incluir alocacoes menores para diversificar a base?', time: '2025-03-19T16:30:00', type: 'duvida' },
-    ],
-    status: 'aberto', urgency: 'baixa', unread: 1,
-  },
-  {
-    id: 'm04', agent: 'quant_analyst', operation: 'op_002', type: 'revisao',
-    subject: 'Valuation DCF — premissas de crescimento',
-    messages: [
-      { from: 'quant_analyst', text: 'Finalizei o DCF da SLC. Equity value range: R$ 18,50-21,00/acao. Principais premissas: crescimento de receita 12% CAGR (area plantada + produtividade), margem EBITDA convergindo para 38% em 2029, WACC de 13,2%. Peers de mercado sugerem upside de 15% vs cotacao atual. Solicito aprovacao das premissas.', time: '2025-03-18T14:00:00', type: 'revisao' },
-      { from: 'user', text: 'O CAGR de 12% parece otimista dado o cenario de commodities. Rode um bear case com 8% e um bull case com 15%. WACC ok. Margem EBITDA: confirme com a empresa se ha capex extraordinario em 2026.', time: '2025-03-18T15:30:00', type: 'resposta' },
-      { from: 'quant_analyst', text: 'Cenarios rodados. Bear case: R$ 16,20/acao. Bull case: R$ 23,80/acao. Base case mantido. Sobre o capex 2026 — a SLC confirmou investimento de R$ 450M em novas unidades de armazenagem. Ja incorporado no modelo.', time: '2025-03-19T10:00:00', type: 'revisao' },
-    ],
-    status: 'aberto', urgency: 'media', unread: 1,
-  },
-  {
-    id: 'm05', agent: 'md_orchestrator', operation: null, type: 'duvida',
-    subject: 'Demanda de treinamento — novos instrumentos',
-    messages: [
-      { from: 'md_orchestrator', text: 'Solicito acesso ao material da ANBIMA sobre "Infraestrutura Debentures Incentivadas — Novas Regras 2025". A regulamentacao mudou em fevereiro e preciso atualizar meus parametros de analise para deals de infra.', time: '2025-03-20T08:00:00', type: 'duvida' },
-    ],
-    status: 'aberto', urgency: 'media', unread: 1,
-  },
-]
+export const MESSAGES = []
 
 // ── TREINAMENTO MD ───────────────────────────────────────────────────────────
 
-export const TRAINING_RECOMMENDATIONS = [
-  { id: 'tr_01', agent: 'financial_modeler', topic: 'Estruturacao de CRA do Agronegocio', source: 'Manual ANBIMA + Case Studies Raizen/Cosan', status: 'em_andamento', date: '2025-03-10' },
-  { id: 'tr_02', agent: 'risk_compliance', topic: 'Novas regras CVM para ofertas 476', source: 'Resolucao CVM 160/2025', status: 'pendente', date: '2025-03-18' },
-  { id: 'tr_03', agent: 'quant_analyst', topic: 'Valuation de empresas do agro com ciclo de commodities', source: 'Research Goldman Sachs — LatAm Agri 2024', status: 'concluido', date: '2025-02-20' },
-  { id: 'tr_04', agent: 'deck_builder', topic: 'Regulamentos de fundos de pensao — limites de alocacao', source: 'Resolucao CMN 4.994 + Previc', status: 'pendente', date: '2025-03-15' },
-]
+export const TRAINING_RECOMMENDATIONS = []
 
-export const MD_DEMANDS = [
-  { id: 'dem_01', text: 'Necessito de acesso ao relatorio ANBIMA — Mercado de Capitais Q1 2025', status: 'pendente', date: '2025-03-18' },
-  { id: 'dem_02', text: 'Solicito treinamento em estruturas de CRA do agro — novas regras da B3', status: 'em_andamento', date: '2025-03-15' },
-  { id: 'dem_03', text: 'Preciso de dados atualizados de spreads de credito — ultimas 20 emissoes AA+', status: 'atendido', date: '2025-03-12' },
-]
+export const MD_DEMANDS = []
 
-export const MD_CHAT_HISTORY = [
-  { from: 'md_orchestrator', text: 'Bom dia. Precisamos priorizar a operacao da Eneva — o cliente quer antecipar o bookbuilding para abril. Sugiro realocar a Carolina (DCM) para 100% nesse deal esta semana.', time: '2025-03-20T08:30:00' },
-  { from: 'user', text: 'Concordo. Mas o CRA da Movida tambem precisa de atencao. Podemos trazer um analista externo para apoiar?', time: '2025-03-20T09:00:00' },
-  { from: 'md_orchestrator', text: 'Avaliando a carga dos agentes: Carolina esta a 88% de capacidade, Fernando (DD) a 65%. Sugiro que Fernando assuma a analise de lastro do CRA Movida enquanto Carolina foca na Eneva. O prazo do CRA e junho — temos folga.', time: '2025-03-20T09:15:00' },
-  { from: 'user', text: 'Aprovado. Execute essa redistribuicao. Quero um update diario sobre o progresso da Eneva a partir de amanha.', time: '2025-03-20T09:30:00' },
-  { from: 'md_orchestrator', text: 'Redistribuicao executada. Update diario agendado para as 9h. Uma observacao: identifiquei que o parecer juridico de garantias da Eneva esta pendente ha 48h. Recomendo cobrar o escritorio externo.', time: '2025-03-20T09:45:00' },
-]
+export const MD_CHAT_HISTORY = []
 
 // ── CHECKLIST UNIFICADO DE DOCUMENTOS ────────────────────────────────────────
 
