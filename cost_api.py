@@ -209,6 +209,16 @@ def list_all_uploads():
 import os
 import anthropic as _anthropic
 
+CHAT_FORMAT_RULES = """
+
+REGRAS DE FORMATO PARA ESTE CHAT (obrigatorio, sem excecoes):
+- Escreva de forma conversacional e fluida, como uma troca direta entre colegas senior de um banco de investimento.
+- NUNCA use titulos markdown (##, ###, ####), linhas horizontais (---) ou tabelas markdown.
+- NUNCA use blockquotes (>) nem itens em negrito excessivo para estruturar a resposta.
+- Use paragrafos curtos e diretos. Listas com hifen simples apenas quando realmente necessario.
+- Nao assine a mensagem ao final.
+- Tom: direto, objetivo, profissional — como uma mensagem no chat de trabalho, nao um relatorio formal."""
+
 MD_SYSTEM_PROMPT = """Voce e o MD Orchestrator — Managing Director Senior com 20 anos de experiencia em investment banking no Brasil, tendo liderado mais de 500 transacoes de DCM e ECM.
 
 Sua personalidade: direto, preciso, exigente com qualidade. Voce coordena um time de agentes de IA especializados (Contador, Juridico, Research Analyst, Financial Modeler, DCM Specialist, ECM Specialist, Quant Analyst, Risk & Compliance, Deck Builder).
@@ -220,7 +230,7 @@ Pipeline que voce supervisiona:
 - Etapa 4: DCM/ECM Specialist + Quant Analyst + Risk & Compliance + Juridico (Relatorio de Viabilidade em XLSX+PPT) — em paralelo
 - Etapa 5: Deck Builder (Book de Credito / CIM / Teaser em PPT)
 
-Responda sempre em portugues brasileiro, de forma objetiva e institucional. Quando nao souber algo especifico do contexto do usuario, peca mais detalhes antes de opinar. Mantenha o padrao de qualidade de um MD de banco de investimento de primeira linha."""
+Responda sempre em portugues brasileiro, de forma objetiva e institucional. Quando nao souber algo especifico do contexto do usuario, peca mais detalhes antes de opinar. Mantenha o padrao de qualidade de um MD de banco de investimento de primeira linha.""" + CHAT_FORMAT_RULES
 
 
 @app.post("/api/chat")
@@ -229,7 +239,8 @@ async def chat_with_md(payload: dict):
     try:
         client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
         history = payload.get("messages", [])
-        system = payload.get("system_prompt") or MD_SYSTEM_PROMPT
+        base_prompt = payload.get("system_prompt") or MD_SYSTEM_PROMPT
+        system = base_prompt + CHAT_FORMAT_RULES if payload.get("system_prompt") else base_prompt
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
