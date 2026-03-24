@@ -650,81 +650,22 @@ export const MD_CHAT_HISTORY = [
   { from: 'md_orchestrator', text: 'Redistribuicao executada. Update diario agendado para as 9h. Uma observacao: identifiquei que o parecer juridico de garantias da Eneva esta pendente ha 48h. Recomendo cobrar o escritorio externo.', time: '2025-03-20T09:45:00' },
 ]
 
-// ── CHECKLIST DE DOCUMENTOS POR TIPO ─────────────────────────────────────────
+// ── CHECKLIST UNIFICADO DE DOCUMENTOS ────────────────────────────────────────
 
-export const DOC_CHECKLISTS = {
-  Debentures: [
-    'Demonstracoes Financeiras Auditadas (ultimos 3 exercicios)',
-    'Estatuto Social Consolidado',
-    'Ata de Assembleia autorizando a emissao',
-    'Projecoes Financeiras (5 anos)',
-    'Parecer Juridico — Garantias',
-    'Rating Letter (agencia)',
-    'Escritura de Emissao (minuta)',
-    'Contrato de Distribuicao (minuta)',
-    'Prospecto Preliminar',
-  ],
-  'Follow-on': [
-    'Demonstracoes Financeiras (IFRS)',
-    'Business Plan atualizado',
-    'Cap Table detalhado',
-    'Acordo de Acionistas',
-    'Material Fact (se aplicavel)',
-    'Prospecto Preliminar',
-    'Investor Presentation',
-    'Lock-up Agreements',
-  ],
-  CRA: [
-    'Demonstracoes Financeiras Auditadas',
-    'Contrato de Cessao de Recebiveis',
-    'Lastro — documentacao comprobatoria',
-    'Rating Report',
-    'Parecer Juridico — Estrutura',
-    'Termo de Securitizacao',
-    'Regulamento do CRA',
-  ],
-  CRI: [
-    'Demonstracoes Financeiras Auditadas',
-    'Contrato Imobiliario Lastro',
-    'Laudo de Avaliacao do Imovel',
-    'Rating Report',
-    'Termo de Securitizacao',
-    'Regulamento do CRI',
-  ],
-  'Loan Offshore': [
-    'Demonstracoes Financeiras Auditadas (IFRS em ingles)',
-    'Corporate Structure Chart',
-    'Board Resolution autorizando o emprestimo',
-    'Legal Opinion — Capacidade de contratar em moeda estrangeira',
-    'Parecer sobre registro no BACEN (ROF)',
-    'Contrato de Emprestimo (Facility Agreement)',
-    'Compliance Certificate',
-    'KYC/AML Documentation',
-    'Hedge — Contrato de Swap/NDF (se aplicavel)',
-    'Garantias — Documentacao (Corporate Guarantee / Pledge)',
-  ],
-  'Bilateral': [
-    'Demonstracoes Financeiras Auditadas',
-    'Contrato de Emprestimo Bilateral',
-    'Board Resolution',
-    'Parecer Juridico — Garantias',
-    'Documentacao de Garantias (conforme tipo)',
-    'Certidoes Negativas (Federal, Estadual, Municipal, Trabalhista)',
-    'Compliance Certificate',
-    'Projecoes Financeiras',
-  ],
-}
+export const DOC_CHECKLIST = [
+  { id: 'df',        label: 'Demonstracoes Financeiras',              required: true,  maxFiles: 5, hint: 'Ultimos 3 exercicios auditados' },
+  { id: 'apres',     label: 'Apresentacao Institucional',             required: true,  maxFiles: 5 },
+  { id: 'org',       label: 'Organograma',                           required: true,  maxFiles: 5 },
+  { id: 'endiv',     label: 'Relacao de Endividamento Detalhado',    required: true,  maxFiles: 5 },
+  { id: 'balancete', label: 'Balancete ou DF de Periodo Intermediario', required: true, maxFiles: 5 },
+  { id: 'analise',   label: 'Material de Analise Financeira',        required: false, maxFiles: 5, hint: 'Opcional' },
+  { id: 'proj',      label: 'Projecoes Financeiras',                 required: true,  maxFiles: 5 },
+  { id: 'garantias', label: 'Detalhamento de Garantias',             required: true,  maxFiles: 5 },
+]
 
 // ── PENDENCIAS ───────────────────────────────────────────────────────────────
 
-export const PENDING_ITEMS = [
-  { id: 'pend_01', operation: 'op_001', item: 'Parecer Juridico — Garantias', responsible: 'cliente', deadline: '2025-03-25', status: 'atrasado' },
-  { id: 'pend_02', operation: 'op_001', item: 'Aprovacao do spread pelo Comite', responsible: 'interno', deadline: '2025-03-22', status: 'pendente' },
-  { id: 'pend_03', operation: 'op_002', item: 'Contratos de Arrendamento — versao final', responsible: 'cliente', deadline: '2025-03-28', status: 'pendente' },
-  { id: 'pend_04', operation: 'op_002', item: 'Lock-up Agreement dos acionistas', responsible: 'cliente', deadline: '2025-04-05', status: 'pendente' },
-  { id: 'pend_05', operation: 'op_003', item: 'Contrato de Cessao de Recebiveis', responsible: 'cliente', deadline: '2025-04-01', status: 'pendente' },
-  { id: 'pend_06', operation: 'op_003', item: 'Analise de lastro — amostragem', responsible: 'interno', deadline: '2025-03-30', status: 'em_andamento' },
-]
+export const PENDING_ITEMS = []
 
 // ── MODELOS / TEMPLATES ──────────────────────────────────────────────────────
 
