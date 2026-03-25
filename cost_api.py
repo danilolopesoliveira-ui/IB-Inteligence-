@@ -240,7 +240,8 @@ async def chat_with_md(payload: dict):
         client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
         history = payload.get("messages", [])
         base_prompt = payload.get("system_prompt") or MD_SYSTEM_PROMPT
-        system = base_prompt + CHAT_FORMAT_RULES if payload.get("system_prompt") else base_prompt
+        ops_context = payload.get("operations_context", "")
+        system = base_prompt + (ops_context if ops_context else "") + CHAT_FORMAT_RULES
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,

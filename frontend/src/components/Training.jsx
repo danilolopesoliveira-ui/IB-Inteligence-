@@ -53,7 +53,7 @@ function RecommendationsPanel() {
 }
 
 function MDChat() {
-  const { toast } = useApp()
+  const { toast, state } = useApp()
   const [messages, setMessages] = useState(() => {
     try {
       const saved = localStorage.getItem('ib_md_chat')
@@ -83,10 +83,16 @@ function MDChat() {
           const firstUser = arr.findIndex(m => m.role === 'user')
           return idx >= firstUser
         })
+      const opsContext = state.operations.length > 0
+        ? `\n\nOPERAÇÕES ATIVAS NO PIPELINE:\n` + state.operations.map(op =>
+            `- ${op.name} | Tipo: ${op.type} | Status: ${op.status} | Etapa: ${op.stage} | Prioridade: ${op.priority}${op.pendingDocs?.length > 0 ? ` | Docs pendentes: ${op.pendingDocs.join(', ')}` : ''}`
+          ).join('\n')
+        : '\n\nNenhuma operacao ativa no pipeline no momento.'
+
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, operations_context: opsContext }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
