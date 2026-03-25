@@ -189,6 +189,63 @@ def list_uploads(company: str):
     }
 
 
+def _extract_file_text(path: Path) -> str:
+    """Extract readable text from an uploaded file, max 5000 chars."""
+    suffix = path.suffix.lower()
+    try:
+        if suffix in ('.xlsx', '.xls'):
+            import openpyxl
+            wb = openpyxl.load_workbook(path, data_only=True)
+            lines = []
+            for sheet_name in wb.sheetnames[:6]:
+                ws = wb[sheet_name]
+                lines.append(f"[Planilha: {sheet_name}]")
+                for row in ws.iter_rows(max_row=80, values_only=True):
+                    vals = [str(c) for c in row if c is not None and str(c).strip()]
+                    if vals:
+                        lines.append(' | '.join(vals))
+            return '\n'.join(lines)[:5000]
+        elif suffix == '.pdf':
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(str(path))
+                pages = [p.extract_text() or '' for p in reader.pages[:15]]
+                return '\n'.join(pages)[:5000]
+            except Exception:
+                return f"[PDF {path.name}: extracao indisponivel]"
+        elif suffix in ('.pptx', '.ppt'):
+            from pptx import Presentation
+            prs = Presentation(str(path))
+            lines = []
+            for slide in prs.slides[:20]:
+                for shape in slide.shapes:
+                    if hasattr(shape, 'text') and shape.text.strip():
+                        lines.append(shape.text.strip())
+            return '\n'.join(lines)[:5000]
+        elif suffix in ('.txt', '.csv', '.md'):
+            return path.read_text(encoding='utf-8', errors='ignore')[:5000]
+        else:
+            return f"[{path.name}: tipo {suffix} sem suporte a extracao de texto]"
+    except Exception as e:
+        return f"[{path.name}: erro — {str(e)[:120]}]"
+
+
+@app.get("/api/files-context/{company}")
+def get_files_context(company: str):
+    """Return extracted text from all uploaded files for a company."""
+    slug = _slug(company)
+    folder = UPLOADS_DIR / slug
+    if not folder.exists():
+        return {"context": "", "files": []}
+    results = []
+    for f in sorted(folder.iterdir()):
+        if f.is_file():
+            content = _extract_file_text(f)
+            results.append({"name": f.name, "content": content})
+    context = "\n\n".join(f"=== {r['name']} ===\n{r['content']}" for r in results)
+    return {"context": context[:20000], "files": [r["name"] for r in results]}
+
+
 @app.get("/api/uploads")
 def list_all_uploads():
     """Lista todas as pastas de empresa criadas em uploads/."""

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { OPERATIONS, AGENTS, BRL_COMPACT } from '../data/mockData'
+import { AGENTS, BRL_COMPACT, DOC_CHECKLIST } from '../data/mockData'
 import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X } from 'lucide-react'
 import TermSheetModal from './TermSheetModal'
 
@@ -45,10 +45,10 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
       <div className="grid grid-cols-5 gap-4 mb-6">
         {[
           { label: 'Valor', value: BRL_COMPACT(operation.value) },
-          { label: 'Rating', value: operation.rating },
-          { label: 'Abertura', value: operation.openDate },
-          { label: 'Target', value: operation.targetDate },
-          { label: 'Progresso', value: `${operation.progress}%` },
+          { label: 'Rating', value: operation.rating || '—' },
+          { label: 'Abertura', value: operation.openDate || (operation.openedAt ? new Date(operation.openedAt).toLocaleDateString('pt-BR') : '—') },
+          { label: 'Prazo', value: operation.targetDate || (operation.deadline ? `${operation.deadline} meses` : '—') },
+          { label: 'Status', value: operation.status || '—' },
         ].map(s => (
           <div key={s.label} className="card p-3 text-center">
             <p className="text-[10px] text-gray-500 mb-1">{s.label}</p>
@@ -58,9 +58,11 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
       </div>
 
       {/* Progress bar */}
-      <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden mb-6">
-        <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${operation.progress}%` }} />
-      </div>
+      {operation.progress != null && (
+        <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden mb-6">
+          <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${operation.progress}%` }} />
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-surface-200">
@@ -79,28 +81,44 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
 
       {tab === 'client' && (
         <div className="space-y-2">
-          {operation.clientDocs.map((doc, i) => {
-            const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.pendente
-            return (
-              <div key={i} className="card-hover p-4 flex items-center gap-4">
-                <FileText size={18} className="text-gray-500 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm text-gray-200">{doc.name}</p>
-                  <p className="text-[10px] text-gray-500">{doc.type} · {doc.date || 'Nao recebido'}</p>
-                </div>
-                <span className={st.cls}>{st.label}</span>
-                {doc.status !== 'pendente' && (
-                  <button className="btn-ghost p-1"><Eye size={14} /></button>
-                )}
-              </div>
-            )
-          })}
+          {operation.clientDocs
+            ? operation.clientDocs.map((doc, i) => {
+                const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.pendente
+                return (
+                  <div key={i} className="card-hover p-4 flex items-center gap-4">
+                    <FileText size={18} className="text-gray-500 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-200">{doc.name}</p>
+                      <p className="text-[10px] text-gray-500">{doc.type} · {doc.date || 'Nao recebido'}</p>
+                    </div>
+                    <span className={st.cls}>{st.label}</span>
+                    {doc.status !== 'pendente' && <button className="btn-ghost p-1"><Eye size={14} /></button>}
+                  </div>
+                )
+              })
+            : DOC_CHECKLIST.map(doc => {
+                const isPending = operation.pendingDocs?.includes(doc.label)
+                const st = isPending ? STATUS_CONFIG.pendente : STATUS_CONFIG.analisado
+                return (
+                  <div key={doc.id} className="card-hover p-4 flex items-center gap-4">
+                    <FileText size={18} className="text-gray-500 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-200">{doc.label}</p>
+                      <p className="text-[10px] text-gray-500">{doc.required ? 'Obrigatorio' : 'Opcional'}</p>
+                    </div>
+                    <span className={st.cls}>{st.label}</span>
+                  </div>
+                )
+              })
+          }
         </div>
       )}
 
       {tab === 'agent' && (
         <div className="space-y-2">
-          {operation.agentDocs.map((doc, i) => {
+          {(operation.agentDocs || []).length === 0 ? (
+            <p className="text-sm text-gray-500 py-8 text-center">Aguardando outputs dos agentes — pipeline em andamento.</p>
+          ) : operation.agentDocs.map((doc, i) => {
             const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.rascunho
             const agent = AGENTS.find(a => a.id === doc.agent)
             return (
@@ -123,7 +141,7 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
 
       {tab === 'timeline' && (
         <div className="relative pl-6 space-y-0">
-          {operation.timeline.map((evt, i) => {
+          {(operation.timeline || [{ date: operation.openedAt || operation.openDate, event: 'Projeto aberto no pipeline', agent: 'md_orchestrator' }]).map((evt, i) => {
             const agent = AGENTS.find(a => a.id === evt.agent)
             return (
               <div key={i} className="relative pb-6 last:pb-0">
@@ -258,7 +276,7 @@ export default function Operations() {
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-surface-200">
         {[
-          { id: 'operations', label: `Operações (${OPERATIONS.length})` },
+          { id: 'operations', label: `Operações (${state.operations.length})` },
           { id: 'proposals', label: `Propostas Emitidas (${state.proposals.length})` },
         ].map(t => (
           <button
@@ -316,8 +334,15 @@ export default function Operations() {
 
       {/* Operations tab */}
       {activeTab === 'operations' && <div className="space-y-3">
-        {OPERATIONS.map(op => {
-          const lead = AGENTS.find(a => a.id === op.leadAgent)
+        {state.operations.length === 0 && (
+          <div className="text-center py-16">
+            <FileText size={32} className="mx-auto text-gray-600 mb-3" />
+            <p className="text-sm text-gray-400">Nenhuma operacao aberta ainda.</p>
+            <p className="text-xs text-gray-500 mt-1">Abra um novo projeto em "Abertura de Projetos".</p>
+          </div>
+        )}
+        {state.operations.map(op => {
+          const lead = AGENTS.find(a => a.id === (op.leadAgent || 'md_orchestrator'))
           return (
             <div
               key={op.id}

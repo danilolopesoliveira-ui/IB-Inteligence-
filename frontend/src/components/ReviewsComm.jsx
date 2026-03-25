@@ -42,12 +42,23 @@ function Thread({ thread }) {
       const filtered = allMsgs.filter(m => m.content && m.content.trim())
       const firstUser = filtered.findIndex(m => m.role === 'user')
       const history = firstUser >= 0 ? filtered.slice(firstUser) : filtered
+
+      let fileContext = ''
+      if (op?.company) {
+        try {
+          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
+          const d = await r.json()
+          if (d.context) fileContext = `\n\nDOCUMENTOS DISPONIVEIS PARA ANALISE — ${op.company}:\n${d.context.slice(0, 5000)}`
+        } catch {}
+      }
+
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history,
-          system_prompt: agent?.promptBase || undefined,
+          system_prompt: agent?.promptBase ? agent.promptBase + fileContext : undefined,
+          operations_context: op ? `\n\nOperacao: ${op.name} | Tipo: ${op.type} | Instrumento: ${op.instrument} | Etapa: ${op.stage || 'Etapa 1'}${op.pendingDocs?.length > 0 ? ` | Docs pendentes: ${op.pendingDocs.join(', ')}` : ''}` : '',
         }),
       })
       const data = await res.json()

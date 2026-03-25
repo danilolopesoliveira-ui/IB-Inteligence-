@@ -47,7 +47,7 @@ function StepIdentification({ form, setForm }) {
         </div>
         <div><label className="text-xs text-gray-400 mb-1 block">Valor Estimado (R$)</label><input className="input-field" value={form.value} onChange={e => setForm({ ...form, value: e.target.value })} placeholder="800000000" /></div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-gray-400 mb-1 block">Prazo Desejado (meses)</label>
           <select className="input-field" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })}>
@@ -58,25 +58,38 @@ function StepIdentification({ form, setForm }) {
           </select>
         </div>
         <div><label className="text-xs text-gray-400 mb-1 block">Rating Atual</label><input className="input-field" value={form.rating} onChange={e => setForm({ ...form, rating: e.target.value })} placeholder="AA+ (Fitch)" /></div>
-        <div>
-          <label className="text-xs text-gray-400 mb-1 block">Tipo de Garantia</label>
-          <select className="input-field" value={form.guarantee} onChange={e => setForm({ ...form, guarantee: e.target.value })}>
-            <option value="">Selecione...</option>
-            <option>Quirografaria (sem garantia)</option>
-            <option>Real — Imoveis</option>
-            <option>Real — Recebiveis</option>
-            <option>Real — Equipamentos</option>
-            <option>Fidejussoria — Aval/Fianca</option>
-            <option>Fidejussoria — Fianca Bancaria</option>
-            <option>Cessao Fiduciaria de Recebiveis</option>
-            <option>Alienacao Fiduciaria de Imovel</option>
-            <option>Alienacao Fiduciaria de Acoes</option>
-            <option>Penhor de Acoes</option>
-            <option>Fundo de Reserva</option>
-            <option>Subordinacao Estrutural</option>
-            <option>Garantia Corporativa (Holding)</option>
-            <option>Multipla (combinada)</option>
-          </select>
+      </div>
+      <div>
+        <label className="text-xs text-gray-400 mb-2 block">Garantias <span className="text-gray-600">(selecao multipla)</span></label>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            'Quirografaria (sem garantia)',
+            'Real — Imoveis',
+            'Real — Recebiveis',
+            'Real — Equipamentos',
+            'Fidejussoria — Aval/Fianca',
+            'Fidejussoria — Fianca Bancaria',
+            'Cessao Fiduciaria de Recebiveis',
+            'Alienacao Fiduciaria de Imovel',
+            'Alienacao Fiduciaria de Acoes',
+            'Penhor de Acoes',
+            'Fundo de Reserva',
+            'Subordinacao Estrutural',
+            'Garantia Corporativa (Holding)',
+          ].map(g => {
+            const selected = (form.guarantees || []).includes(g)
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => {
+                  const cur = form.guarantees || []
+                  setForm({ ...form, guarantees: selected ? cur.filter(x => x !== g) : [...cur, g] })
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] border transition-all ${selected ? 'border-gold text-gold bg-gold/10' : 'border-surface-200 text-gray-400 hover:text-gray-200'}`}
+              >{g}</button>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -343,7 +356,7 @@ function PendingPanel() {
   )
 }
 
-const EMPTY_FORM = { company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantee: '', agents: ['md_orchestrator'], priority: 'Alta', notes: '', selectedDocs: [], additionalRequest: '' }
+const EMPTY_FORM = { company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantees: [], agents: ['md_orchestrator'], priority: 'Alta', notes: '', selectedDocs: [], additionalRequest: '' }
 
 export default function ProjectOpening() {
   const { dispatch, toast } = useApp()

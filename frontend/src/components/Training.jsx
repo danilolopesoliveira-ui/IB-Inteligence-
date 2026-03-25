@@ -89,10 +89,22 @@ function MDChat() {
           ).join('\n')
         : '\n\nNenhuma operacao ativa no pipeline no momento.'
 
+      const fileContextParts = await Promise.all(
+        state.operations.slice(0, 3).map(async op => {
+          if (!op.company) return ''
+          try {
+            const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
+            const d = await r.json()
+            return d.context ? `\n\nDOCUMENTOS ENVIADOS — ${op.company}:\n${d.context.slice(0, 4000)}` : ''
+          } catch { return '' }
+        })
+      )
+      const filesContext = fileContextParts.filter(Boolean).join('')
+
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, operations_context: opsContext }),
+        body: JSON.stringify({ messages: history, operations_context: opsContext + filesContext }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)

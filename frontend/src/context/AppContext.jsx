@@ -163,7 +163,7 @@ function reducer(state, action) {
         sector: form.sector,
         deadline: form.deadline,
         rating: form.rating,
-        guarantee: form.guarantee,
+        guarantees: form.guarantees || [],
         priority: form.priority,
         notes: form.notes,
         agents: form.agents,
