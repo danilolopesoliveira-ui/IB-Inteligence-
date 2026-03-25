@@ -59,7 +59,6 @@ function DifficultyDots({ level }) {
 function TaskDetailModal({ taskId, onClose }) {
   const { state, dispatch, toast } = useApp()
   const task = state.tasks.find(t => t.id === taskId)
-  const [executing, setExecuting] = useState(false)
   const [approving, setApproving] = useState(false)
 
   if (!task) return null
@@ -84,46 +83,6 @@ function TaskDetailModal({ taskId, onClose }) {
       const d = await r.json()
       return d.context || ''
     } catch { return '' }
-  }
-
-  const executeAgent = async () => {
-    setExecuting(true)
-    try {
-      const fileContext = await fetchFileContext()
-      const r = await fetch(`${API}/api/run-agent-task`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: task.agent,
-          operation: operation || { id: opId },
-          file_context: fileContext,
-          task_title: task.title,
-        }),
-      })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`)
-      if (data.text) {
-        const now = new Date().toISOString()
-        dispatch({ type: 'APPEND_TASK_LOG', payload: {
-          taskId,
-          column: 'Em Revisao',
-          entries: [
-            { time: now, agent: task.agent, type: 'start', text: `Executando: ${task.title}` },
-            { time: now, agent: task.agent, type: 'progress', text: data.text },
-          ],
-        }})
-        dispatch({ type: 'ADD_AGENT_RESPONSE', payload: {
-          threadId: `msg_${opId}`,
-          agentId: task.agent,
-          text: data.text,
-        }})
-        toast('Agente executado — tarefa em revisao', 'success')
-      }
-    } catch (err) {
-      toast(`Erro: ${err.message}`, 'error')
-    } finally {
-      setExecuting(false)
-    }
   }
 
   const approveTask = async () => {
@@ -197,8 +156,7 @@ function TaskDetailModal({ taskId, onClose }) {
     }
   }
 
-  const canExecute = task.column !== 'Concluido' && !executing && !approving
-  const canApprove = task.column === 'Em Revisao' && !approving && !executing
+  const canApprove = task.column === 'Em Revisao' && !approving
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={onClose}>
@@ -242,20 +200,14 @@ function TaskDetailModal({ taskId, onClose }) {
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2 mt-4">
-            {canExecute && (
-              <button onClick={executeAgent} disabled={executing} className="btn-primary text-xs flex items-center gap-1.5 px-3 py-1.5">
-                {executing ? <Loader size={13} className="animate-spin" /> : <Play size={13} />}
-                {executing ? 'Executando...' : 'Executar Agente'}
-              </button>
-            )}
-            {canApprove && (
+          {canApprove && (
+            <div className="flex gap-2 mt-4">
               <button onClick={approveTask} disabled={approving} className="btn-ghost text-xs flex items-center gap-1.5 px-3 py-1.5 border border-accent-green text-accent-green hover:bg-accent-green/10">
                 {approving ? <Loader size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                 {approving ? 'Aprovando...' : 'Aprovar e Avançar Etapa'}
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Timeline / Activity Log */}
