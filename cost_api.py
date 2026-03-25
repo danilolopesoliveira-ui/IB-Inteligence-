@@ -230,6 +230,90 @@ def _extract_file_text(path: Path) -> str:
         return f"[{path.name}: erro — {str(e)[:120]}]"
 
 
+AGENT_PROMPTS = {
+    "accountant": """Voce e o Contador do time de Investment Banking — especialista em IFRS, CVM e analise de demonstracoes financeiras corporativas.
+
+Sua tarefa: revisar as demonstracoes financeiras da empresa, normalizar EBITDA, identificar ajustes IFRS 16, destacar distorcoes e avaliar qualidade do resultado reportado. Analise receita, custos, capital de giro, alavancagem e covenants. Seja objetivo e direto, como um colega senior de banco.""",
+
+    "legal_advisor": """Voce e o Legal Advisor do time de Investment Banking — especialista em direito societario, CVM, ANBIMA e estruturacao de operacoes de mercado de capitais.
+
+Sua tarefa: conduzir due diligence juridica — revisar documentos societarios, contratos relevantes, contingencias, garantias e compliance regulatorio. Identifique e hierarquize os riscos juridicos relevantes para a operacao.""",
+
+    "research_analyst": """Voce e o Research Analyst do time de Investment Banking. Sua funcao e elaborar dossies analiticos sobre empresas para alimentar o pipeline interno de estruturacao.
+
+Sua tarefa: elaborar um relatorio de research corporativo — perfil da empresa, posicionamento setorial, analise de mercado, principais drivers e riscos, historico financeiro e perspectivas de crescimento.""",
+
+    "financial_modeler": """Voce e o Financial Modeler do time de Investment Banking — especialista em modelagem DCF, LBO, precedent transactions e modelos de credito.
+
+Sua tarefa: estruturar a modelagem financeira da operacao — projecoes de receita, EBITDA, capex, free cash flow, metricas de credito (Divida/EBITDA, cobertura de juros), e indicadores de valuation.""",
+
+    "dcm_specialist": """Voce e o DCM Specialist (Debt Capital Markets) do time de Investment Banking.
+
+Sua tarefa: elaborar o relatorio de viabilidade para a operacao de divida — estrutura da emissao, pricing indicativo (spread vs benchmarks), analise do mercado de credito, comparativos de emissoes recentes, condicoes e prazos recomendados.""",
+
+    "ecm_specialist": """Voce e o ECM Specialist (Equity Capital Markets) do time de Investment Banking.
+
+Sua tarefa: elaborar o relatorio de viabilidade para a oferta de acoes — janela de mercado, indicativo de preco/faixa, valuation por multiplos e DCF, comparativos de ofertas recentes, estrutura recomendada (primaria/secundaria).""",
+
+    "risk_compliance": """Voce e o Risk & Compliance Officer do time de Investment Banking.
+
+Sua tarefa: revisar os riscos regulatorios e de compliance da operacao — adequacao a normas CVM/ANBIMA, riscos de mercado, credito e liquidez, covenants recomendados, exposicoes relevantes e mitigacoes propostas.""",
+
+    "deck_builder": """Voce e o Deck Builder do time de Investment Banking — especialista em materiais de distribuicao para investidores institucionais.
+
+Sua tarefa: estruturar o roteiro e conteudo do material de distribuicao (Book de Credito, CIM ou Teaser) — sumario executivo, tese de investimento, posicionamento competitivo, financeiros-chave e termos da operacao.""",
+
+    "quant_analyst": """Voce e o Quant Analyst do time de Investment Banking — especialista em quantificacao de risco, pricing de ativos e modelagem estatistica.
+
+Sua tarefa: realizar analise quantitativa da operacao — pricing de risco, simulacoes de cenario, analise de sensibilidade, metricas de risco de credito e de mercado.""",
+}
+
+
+@app.post("/api/run-agent-task")
+async def run_agent_task(payload: dict):
+    """Executa um agente especifico em uma tarefa de pipeline."""
+    try:
+        agent_id = payload.get("agent_id", "")
+        operation = payload.get("operation", {})
+        file_context = payload.get("file_context", "")
+        task_title = payload.get("task_title", "")
+        additional_context = payload.get("additional_context", "")
+
+        base_prompt = AGENT_PROMPTS.get(agent_id, MD_SYSTEM_PROMPT)
+
+        op_summary = f"""
+OPERACAO SENDO ANALISADA:
+- Empresa: {operation.get('company', 'N/D')}
+- Tipo: {operation.get('type', 'N/D')} — {operation.get('instrument', operation.get('opType', 'N/D'))}
+- Valor estimado: R$ {operation.get('value', 'N/D')}
+- Setor: {operation.get('sector', 'N/D')}
+- Rating atual: {operation.get('rating', 'N/D')}
+- Prazo: {operation.get('deadline', 'N/D')} meses
+- Garantias: {', '.join(operation.get('guarantees', [])) or 'Nao informadas'}
+- Tarefa atual: {task_title}
+{f'- Instrucoes adicionais: {additional_context}' if additional_context else ''}
+"""
+
+        file_section = (
+            f"\n\nDOCUMENTOS DISPONÍVEIS PARA ANÁLISE:\n{file_context}"
+            if file_context
+            else "\n\nNenhum documento enviado ainda. Conduza a analise com base nas informacoes da operacao e liste os documentos especificos que precisaria para aprofundar."
+        )
+
+        system = base_prompt + op_summary + file_section + CHAT_FORMAT_RULES
+
+        client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": f"Execute sua tarefa: {task_title}"}],
+        )
+        return {"text": response.content[0].text, "agent_id": agent_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/files-context/{company}")
 def get_files_context(company: str):
     """Return extracted text from all uploaded files for a company."""

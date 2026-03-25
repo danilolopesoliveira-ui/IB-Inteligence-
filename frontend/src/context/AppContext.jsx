@@ -138,11 +138,22 @@ function reducer(state, action) {
       )
       return { ...state, mdDemands }
     }
+    case 'APPEND_TASK_LOG': {
+      const tasks = state.tasks.map(t => {
+        if (t.id !== action.payload.taskId) return t
+        const newLog = [...(t.log || []), ...(action.payload.entries || [])]
+        const updates = { log: newLog }
+        if (action.payload.column) updates.column = action.payload.column
+        return { ...t, ...updates }
+      })
+      try { localStorage.setItem('ib_tasks', JSON.stringify(tasks)) } catch {}
+      return { ...state, tasks }
+    }
     case 'OPEN_PROJECT': {
       const { form, docs } = action.payload
       const ecmTypes = ['IPO', 'Follow-on', 'Block Trade']
       const isECM = ecmTypes.includes(form.opType)
-      const opId = `op_${Date.now()}`
+      const opId = action.payload.opId || `op_${Date.now()}`
       const now = new Date().toISOString()
 
       const pendingDocs = docs.filter(d => d.required && d.files.length === 0).map(d => d.label)

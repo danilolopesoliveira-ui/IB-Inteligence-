@@ -364,14 +364,78 @@ export default function ProjectOpening() {
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [uploadedDocs, setUploadedDocs] = useState({})
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.company.trim()) { toast('Informe o nome da empresa', 'error'); return }
+    const opId = `op_${Date.now()}`
+    const capturedForm = { ...form }
     const docs = DOC_CHECKLIST.map((doc, idx) => ({ ...doc, files: uploadedDocs[idx]?.files || [] }))
-    dispatch({ type: 'OPEN_PROJECT', payload: { form, docs } })
-    toast(`Projeto ${form.company} aberto! Agentes acionados.`, 'info')
+    dispatch({ type: 'OPEN_PROJECT', payload: { form: capturedForm, docs, opId } })
+    toast(`Projeto ${capturedForm.company} aberto! Etapa 1 em execucao...`, 'info')
     setStep(0)
     setForm({ ...EMPTY_FORM })
     setUploadedDocs({})
+
+    // Fetch file context uploaded for this company
+    let fileContext = ''
+    try {
+      const r = await fetch(`${API}/api/files-context/${encodeURIComponent(capturedForm.company)}`)
+      const d = await r.json()
+      fileContext = d.context || ''
+    } catch {}
+
+    const ecmTypes = ['IPO', 'Follow-on', 'Block Trade']
+    const operation = {
+      id: opId,
+      name: `${capturedForm.company} — ${capturedForm.opType}`,
+      type: ecmTypes.includes(capturedForm.opType) ? 'ECM' : 'DCM',
+      company: capturedForm.company,
+      sector: capturedForm.sector,
+      value: capturedForm.value,
+      rating: capturedForm.rating,
+      guarantees: capturedForm.guarantees,
+      deadline: capturedForm.deadline,
+    }
+
+    const etapa1 = [
+      { agentId: 'accountant',    taskId: `${opId}_accountant`, title: `Etapa 1 — Revisao de DFs: ${capturedForm.company}` },
+      { agentId: 'legal_advisor', taskId: `${opId}_legal`,      title: `Etapa 1 — Due Diligence Juridica: ${capturedForm.company}` },
+    ]
+
+    for (const task of etapa1) {
+      try {
+        const r = await fetch(`${API}/api/run-agent-task`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent_id: task.agentId,
+            operation,
+            file_context: fileContext,
+            task_title: task.title,
+            additional_context: capturedForm.additionalRequest,
+          }),
+        })
+        const data = await r.json()
+        if (data.text) {
+          const now = new Date().toISOString()
+          dispatch({ type: 'APPEND_TASK_LOG', payload: {
+            taskId: task.taskId,
+            column: 'Em Revisao',
+            entries: [
+              { time: now, agent: task.agentId, type: 'start', text: `Executando: ${task.title}` },
+              { time: now, agent: task.agentId, type: 'progress', text: data.text },
+            ],
+          }})
+          dispatch({ type: 'ADD_AGENT_RESPONSE', payload: {
+            threadId: `msg_${opId}`,
+            agentId: task.agentId,
+            text: data.text,
+          }})
+        }
+      } catch (err) {
+        console.error(`[${task.agentId}] Erro na execucao automatica:`, err)
+      }
+    }
+    toast('Etapa 1 concluida — aguardando revisao do MD', 'success')
   }
 
   return (
