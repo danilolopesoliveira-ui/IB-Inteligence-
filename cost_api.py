@@ -230,6 +230,16 @@ def _extract_file_text(path: Path) -> str:
         return f"[{path.name}: erro — {str(e)[:120]}]"
 
 
+BLOCKING_PREVENTION_RULES = """
+
+INSTRUCAO CRITICA — NAO BLOQUEIE O PIPELINE:
+Voce NUNCA deve se recusar a produzir um output por falta de documentos ou informacoes.
+- Analise e opine sobre tudo o que estiver disponivel no momento, mesmo que parcialmente.
+- Se houver documentos ou informacoes faltando, sinalize no INICIO do seu output, de forma clara e objetiva: liste cada item ausente e o impacto especifico que a ausencia causa na sua analise.
+- Indique o que poderia ser aprofundado ou revisado quando cada item faltante for recebido.
+- Conclua sempre com uma avaliacao preliminar e uma recomendacao de proximo passo para o MD.
+- Um output parcial bem fundamentado e melhor do que silencio. O MD revisara e decidira como prosseguir."""
+
 AGENT_PROMPTS = {
     "accountant": """Voce e o Contador do time de Investment Banking — especialista em IFRS, CVM e analise de demonstracoes financeiras corporativas.
 
@@ -300,7 +310,7 @@ OPERACAO SENDO ANALISADA:
             else "\n\nNenhum documento enviado ainda. Conduza a analise com base nas informacoes da operacao e liste os documentos especificos que precisaria para aprofundar."
         )
 
-        system = base_prompt + op_summary + file_section + CHAT_FORMAT_RULES
+        system = base_prompt + op_summary + file_section + BLOCKING_PREVENTION_RULES + CHAT_FORMAT_RULES
 
         client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
         response = client.messages.create(
