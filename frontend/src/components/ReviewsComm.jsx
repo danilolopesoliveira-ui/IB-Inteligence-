@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { AGENTS, OPERATIONS } from '../data/mockData'
-import { Send, Filter, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search } from 'lucide-react'
+import { AGENTS } from '../data/mockData'
+import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -19,7 +19,8 @@ function Thread({ thread }) {
   const messagesEndRef = useRef(null)
 
   const agent = AGENTS.find(a => a.id === thread.agent)
-  const op = OPERATIONS.find(o => o.id === thread.operation)
+  const { state: appState } = useApp()
+  const op = appState.operations.find(o => o.id === thread.operation)
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   useEffect(scrollToBottom, [thread.messages.length])
@@ -150,12 +151,84 @@ function Thread({ thread }) {
   )
 }
 
+function NewThreadModal({ onClose }) {
+  const { dispatch, toast, state } = useApp()
+  const [agentId, setAgentId] = useState(AGENTS[0]?.id || '')
+  const [subject, setSubject] = useState('')
+  const [text, setText] = useState('')
+  const [opId, setOpId] = useState('')
+
+  const create = () => {
+    if (!subject.trim() || !text.trim()) { toast('Preencha assunto e mensagem', 'error'); return }
+    const now = new Date().toISOString()
+    const thread = {
+      id: `msg_${Date.now()}`,
+      agent: agentId,
+      operation: opId || null,
+      type: 'duvida',
+      subject: subject.trim(),
+      messages: [{ from: 'user', text: text.trim(), time: now, type: 'duvida' }],
+      status: 'aberto',
+      urgency: 'media',
+      unread: 0,
+    }
+    dispatch({ type: 'ADD_THREAD', payload: thread })
+    toast('Conversa iniciada', 'success')
+    onClose(thread.id)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => onClose(null)}>
+      <div className="bg-surface-50 border border-surface-200 rounded-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-white">Nova Conversa</h3>
+          <button onClick={() => onClose(null)} className="text-gray-500 hover:text-white"><X size={16} /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Agente</label>
+            <div className="flex flex-wrap gap-1.5">
+              {AGENTS.map(a => (
+                <button key={a.id} onClick={() => setAgentId(a.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all ${agentId === a.id ? 'border-gold text-gold bg-gold/10' : 'border-surface-200 text-gray-400 hover:text-gray-200'}`}>
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style={{ background: a.color }}>{a.avatar}</div>
+                  {a.name.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Operacao (opcional)</label>
+            <select className="input-field text-xs" value={opId} onChange={e => setOpId(e.target.value)}>
+              <option value="">Sem operacao vinculada</option>
+              {state.operations.map(op => <option key={op.id} value={op.id}>{op.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Assunto</label>
+            <input className="input-field text-xs" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Ex: Revisao de premissas de WACC" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Mensagem</label>
+            <textarea className="input-field text-xs h-20 resize-none" value={text} onChange={e => setText(e.target.value)} placeholder="Descreva sua duvida ou solicitacao..." />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={() => onClose(null)} className="btn-ghost text-xs">Cancelar</button>
+            <button onClick={create} className="btn-primary text-xs flex items-center gap-1.5"><Send size={12} /> Iniciar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ReviewsComm() {
   const { state } = useApp()
   const { messages } = state
   const [selectedThread, setSelectedThread] = useState(messages[0]?.id || null)
   const [filterStatus, setFilterStatus] = useState('all')
   const [search, setSearch] = useState('')
+  const [showNewThread, setShowNewThread] = useState(false)
 
   const filteredMessages = messages.filter(m => {
     if (filterStatus === 'aberto' && m.status !== 'aberto') return false
@@ -180,7 +253,13 @@ export default function ReviewsComm() {
 
   return (
     <div className="h-full flex flex-col">
-      <h2 className="text-xl font-bold text-white font-editorial mb-1">Revisoes & Comunicacao</h2>
+      {showNewThread && <NewThreadModal onClose={(id) => { setShowNewThread(false); if (id) setSelectedThread(id) }} />}
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-xl font-bold text-white font-editorial">Revisoes & Comunicacao</h2>
+        <button onClick={() => setShowNewThread(true)} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3">
+          <Plus size={13} /> Nova Conversa
+        </button>
+      </div>
       <p className="text-xs text-gray-500 mb-4">{messages.reduce((s, m) => s + m.unread, 0)} mensagens nao lidas</p>
 
       {/* Agent tabs */}

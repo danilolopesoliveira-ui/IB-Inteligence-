@@ -8,8 +8,8 @@ function checkAndClearStorage() {
   if (localStorage.getItem('ib_data_version') !== DATA_VERSION) {
     localStorage.removeItem('ib_operations')
     localStorage.removeItem('ib_thread_messages')
-    localStorage.removeItem('ib_md_chat')
     localStorage.removeItem('ib_tasks')
+    // ib_md_chat NAO e limpo — conversas com o MD devem persistir sempre
     localStorage.setItem('ib_data_version', DATA_VERSION)
   }
 }
@@ -227,6 +227,11 @@ function reducer(state, action) {
       try { localStorage.setItem('ib_tasks', JSON.stringify(tasks)) } catch {}
       try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
       return { ...state, operations, tasks, messages }
+    }
+    case 'ADD_THREAD': {
+      const messages = [action.payload, ...state.messages]
+      try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
+      return { ...state, messages }
     }
     case 'ADD_PROPOSAL':
       return { ...state, proposals: [action.payload, ...state.proposals] }
