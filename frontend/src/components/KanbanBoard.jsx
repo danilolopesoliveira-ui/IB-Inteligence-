@@ -230,7 +230,8 @@ function Column({ name, tasks, onDrop, onTaskClick }) {
   const [isDragOver, setDragOver] = useState(false)
   const columnColors = {
     'Backlog': 'border-gray-600', 'Em Analise': 'border-accent-blue',
-    'Em Revisao': 'border-gold', 'Aguardando Cliente': 'border-accent-amber',
+    'Em Revisao': 'border-gold', 'Devolvido p/ Ajuste': 'border-amber-400',
+    'Aguardando Cliente': 'border-accent-amber',
     'Concluido': 'border-accent-green',
   }
 

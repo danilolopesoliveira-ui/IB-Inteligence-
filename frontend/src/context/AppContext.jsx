@@ -3,8 +3,8 @@ import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIO
 
 const AppContext = createContext(null)
 
-const DATA_VERSION = '2026.05.a'
-const AGENTS_VERSION = '2026.04.c'
+const DATA_VERSION = '2026.05.b'
+const AGENTS_VERSION = '2026.04.d'
 function checkAndClearStorage() {
   if (localStorage.getItem('ib_data_version') !== DATA_VERSION) {
     localStorage.removeItem('ib_operations')

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../data/mockData'
-import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X, Loader, Paperclip } from 'lucide-react'
+import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X, Loader, Paperclip, CornerDownLeft } from 'lucide-react'
 
 // ── Markdown-lite renderer ──────────────────────────────────────────────────
 function FormattedMessage({ text }) {
@@ -120,6 +120,9 @@ function Thread({ thread }) {
   const [loading, setLoading] = useState(false)
   const [approving, setApproving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [reviewMode, setReviewMode] = useState(false)
+  const [reviewFeedback, setReviewFeedback] = useState('')
+  const [reviewing, setReviewing] = useState(false)
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
 
@@ -325,6 +328,89 @@ function Thread({ thread }) {
     }
   }
 
+  const requestRevision = async () => {
+    if (!reviewFeedback.trim() || reviewing) return
+    const feedback = reviewFeedback.trim()
+    setReviewing(true)
+
+    // Log user feedback as a message in the thread
+    dispatch({ type: 'SEND_MESSAGE', payload: { threadId: thread.id, text: `[Solicitacao de revisao]: ${feedback}` } })
+
+    // Move tasks back to "Devolvido p/ Ajuste"
+    const taskIds = thread.approvalTaskIds || []
+    const now = new Date().toISOString()
+    for (const taskId of taskIds) {
+      dispatch({ type: 'APPEND_TASK_LOG', payload: {
+        taskId,
+        column: 'Devolvido p/ Ajuste',
+        entries: [{ time: now, agent: 'md_orchestrator', type: 'review', text: `Devolvido pelo MD para ajuste: ${feedback}` }],
+      }})
+    }
+
+    try {
+      // Fetch file context
+      let fileContext = ''
+      if (op?.company) {
+        try {
+          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
+          const d = await r.json()
+          fileContext = d.context || ''
+        } catch {}
+      }
+
+      // Reprocess each task with the MD feedback
+      for (const taskId of taskIds) {
+        const task = appState.tasks.find(t => t.id === taskId)
+        if (!task) continue
+        const agentConfig = appState.agents.find(a => a.id === task.agent)
+
+        try {
+          const r = await fetch(`${API}/api/run-agent-task`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agent_id: task.agent,
+              operation: op || { id: thread.operation },
+              file_context: fileContext,
+              task_title: task.title,
+              custom_prompt: agentConfig?.promptBase || '',
+              additional_context: `FEEDBACK DO MD PARA REVISAO — O MD devolveu esta etapa com os seguintes ajustes solicitados:\n${feedback}\n\nReprocesse sua analise incorporando este feedback. Mantenha o que estava correto e ajuste os pontos sinalizados.`,
+            }),
+          })
+          const data = await r.json()
+          if (data.text) {
+            const t2 = new Date().toISOString()
+            dispatch({ type: 'APPEND_TASK_LOG', payload: {
+              taskId,
+              column: 'Em Revisao',
+              entries: [
+                { time: t2, agent: task.agent, type: 'review', text: `Reprocessado apos feedback do MD` },
+                { time: t2, agent: task.agent, type: 'progress', text: data.text },
+              ],
+            }})
+            dispatch({ type: 'ADD_AGENT_RESPONSE', payload: {
+              threadId: thread.id,
+              agentId: task.agent,
+              text: data.text,
+            }})
+          }
+        } catch (err) {
+          console.error(`[${task.agent}] Erro no reprocessamento:`, err)
+          toast(`Erro ao reprocessar ${task.agent}: ${err.message}`, 'error')
+        }
+      }
+
+      // Keep approval state active for the MD to approve the new output
+      toast('Revisao solicitada — agente reprocessando com seu feedback', 'info')
+    } catch (err) {
+      toast(`Erro: ${err.message}`, 'error')
+    } finally {
+      setReviewing(false)
+      setReviewMode(false)
+      setReviewFeedback('')
+    }
+  }
+
   const urgencyColors = { alta: 'badge-red', media: 'badge-gold', baixa: 'badge-green' }
 
   return (
@@ -381,26 +467,68 @@ function Thread({ thread }) {
           </div>
         </div>
       )}
-      {/* Approval banner */}
+      {/* Approval / Review banner */}
       {thread.awaitingApproval && (
         op?.paused ? (
           <div className="flex items-center gap-2 px-4 py-3 mb-3 rounded-lg border border-amber-400/30 bg-amber-400/5">
             <span className="text-[11px] text-amber-300">Operacao pausada — aprovacao suspensa. Reative a operacao em Operacoes para continuar o pipeline.</span>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 px-4 py-3 mb-3 rounded-lg border border-accent-green/40 bg-accent-green/10">
-            <div>
-              <p className="text-xs font-semibold text-accent-green">Etapa concluida pelo MD — aguardando sua aprovacao</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">{thread.approvalTaskIds?.length || 0} tarefa(s) prontas para avancar o pipeline</p>
+          <div className="mb-3 rounded-lg border border-surface-200 bg-surface-50 overflow-hidden">
+            {/* Action buttons row */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-white">Etapa concluida — revise o output e decida</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">{thread.approvalTaskIds?.length || 0} tarefa(s) aguardando sua decisao</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setReviewMode(!reviewMode)}
+                  disabled={approving || reviewing}
+                  className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 text-xs whitespace-nowrap"
+                >
+                  <CornerDownLeft size={13} />
+                  Solicitar Revisao
+                </button>
+                <button
+                  onClick={approveStage}
+                  disabled={approving || reviewing}
+                  className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-accent-green text-accent-green hover:bg-accent-green/20 text-xs whitespace-nowrap"
+                >
+                  {approving ? <Loader size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                  {approving ? 'Aprovando...' : 'Aprovar e Avancar'}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={approveStage}
-              disabled={approving}
-              className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-accent-green text-accent-green hover:bg-accent-green/20 text-xs whitespace-nowrap"
-            >
-              {approving ? <Loader size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-              {approving ? 'Aprovando...' : 'Aprovar e Avancar'}
-            </button>
+
+            {/* Review feedback panel (expandable) */}
+            {reviewMode && (
+              <div className="px-4 pb-3 border-t border-surface-200 pt-3">
+                <p className="text-[11px] text-gray-400 mb-2">Descreva os ajustes necessarios — o agente reprocessara com seu feedback:</p>
+                <textarea
+                  className="input-field text-xs h-20 resize-none mb-2"
+                  placeholder="Ex: O EBITDA normalizado deve considerar o ajuste de IFRS 16. Revisar a premissa de capital de giro — ciclo de 87 dias parece subestimado dado o historico..."
+                  value={reviewFeedback}
+                  onChange={e => setReviewFeedback(e.target.value)}
+                  disabled={reviewing}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => { setReviewMode(false); setReviewFeedback('') }}
+                    disabled={reviewing}
+                    className="btn-ghost text-xs text-gray-400"
+                  >Cancelar</button>
+                  <button
+                    onClick={requestRevision}
+                    disabled={reviewing || !reviewFeedback.trim()}
+                    className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-amber-400 text-amber-400 hover:bg-amber-400/20 text-xs"
+                  >
+                    {reviewing ? <Loader size={13} className="animate-spin" /> : <Send size={13} />}
+                    {reviewing ? 'Reprocessando...' : 'Enviar Feedback'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )
       )}

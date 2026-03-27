@@ -891,7 +891,7 @@ export const OPERATIONS = [
 
 // ── TAREFAS KANBAN ───────────────────────────────────────────────────────────
 
-export const KANBAN_COLUMNS = ['Backlog', 'Em Analise', 'Em Revisao', 'Aguardando Cliente', 'Concluido']
+export const KANBAN_COLUMNS = ['Backlog', 'Em Analise', 'Em Revisao', 'Devolvido p/ Ajuste', 'Aguardando Cliente', 'Concluido']
 
 export const TASKS = []
 
