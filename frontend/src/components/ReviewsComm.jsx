@@ -1,7 +1,82 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../data/mockData'
 import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X, Loader, Paperclip } from 'lucide-react'
+
+// ── Markdown-lite renderer ──────────────────────────────────────────────────
+function FormattedMessage({ text }) {
+  const rendered = useMemo(() => {
+    if (!text) return null
+    const lines = text.split('\n')
+    const elements = []
+    let i = 0
+
+    while (i < lines.length) {
+      const line = lines[i]
+
+      // Empty line → spacer
+      if (line.trim() === '') {
+        elements.push(<div key={i} className="h-2" />)
+        i++
+        continue
+      }
+
+      // Numbered list (1. 2. 3.)
+      if (/^\d+\.\s/.test(line.trim())) {
+        const items = []
+        while (i < lines.length && /^\d+\.\s/.test(lines[i].trim())) {
+          items.push(lines[i].trim().replace(/^\d+\.\s/, ''))
+          i++
+        }
+        elements.push(
+          <ol key={`ol-${i}`} className="list-decimal list-outside ml-4 space-y-1 my-1.5">
+            {items.map((item, j) => <li key={j}><BoldText text={item} /></li>)}
+          </ol>
+        )
+        continue
+      }
+
+      // Bullet list (- item)
+      if (/^[-•]\s/.test(line.trim())) {
+        const items = []
+        while (i < lines.length && /^[-•]\s/.test(lines[i].trim())) {
+          items.push(lines[i].trim().replace(/^[-•]\s/, ''))
+          i++
+        }
+        elements.push(
+          <ul key={`ul-${i}`} className="list-disc list-outside ml-4 space-y-1 my-1.5">
+            {items.map((item, j) => <li key={j}><BoldText text={item} /></li>)}
+          </ul>
+        )
+        continue
+      }
+
+      // Regular paragraph
+      elements.push(<p key={i} className="my-1"><BoldText text={line} /></p>)
+      i++
+    }
+
+    return elements
+  }, [text])
+
+  return <div className="formatted-msg">{rendered}</div>
+}
+
+// Inline bold (**text**) renderer
+function BoldText({ text }) {
+  if (!text) return null
+  const parts = text.split(/(\*\*[^*]+\*\*)/)
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </>
+  )
+}
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -285,7 +360,7 @@ function Thread({ thread }) {
                   isUser ? 'bg-gold/15 text-gold-light' : 'bg-surface-100 text-gray-300'
                 }`}>
                   {!isUser && <TypeIcon size={12} className={`${typeInfo.cls} inline mr-1.5 -mt-0.5`} />}
-                  {msg.text}
+                  {isUser ? msg.text : <FormattedMessage text={msg.text} />}
                 </div>
                 <p className="text-[10px] text-gray-600 mt-1">
                   {new Date(msg.time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}

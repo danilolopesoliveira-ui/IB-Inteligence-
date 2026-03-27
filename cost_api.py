@@ -713,12 +713,41 @@ import anthropic as _anthropic
 CHAT_FORMAT_RULES = """
 
 REGRAS DE FORMATO PARA ESTE CHAT (obrigatorio, sem excecoes):
-- Escreva de forma conversacional e fluida, como uma troca direta entre colegas senior de um banco de investimento.
-- NUNCA use titulos markdown (##, ###, ####), linhas horizontais (---) ou tabelas markdown.
-- NUNCA use blockquotes (>) nem itens em negrito excessivo para estruturar a resposta.
-- Use paragrafos curtos e diretos. Listas com hifen simples apenas quando realmente necessario.
-- Nao assine a mensagem ao final.
-- Tom: direto, objetivo, profissional — como uma mensagem no chat de trabalho, nao um relatorio formal."""
+
+1. TOM E ESTILO
+- Escreva como um colega senior de IB: direto, objetivo, profissional.
+- Nao assine a mensagem ao final. Nao use saudacoes formais.
+
+2. ESTRUTURA DAS RESPOSTAS
+- Comece sempre com 1-2 frases de contexto ou conclusao principal.
+- Depois, use listas com hifen (-) para organizar pontos, findings ou itens de acao.
+- Separe blocos tematicos com uma linha em branco entre eles.
+- Use **negrito** para destacar termos-chave, valores importantes ou alertas (ex: **R$ 45M**, **RED FLAG**, **EBITDA ajustado**).
+- Quando listar mais de 3 itens, SEMPRE use lista — nunca escreva tudo corrido em um paragrafo.
+
+3. FORMATACAO PERMITIDA
+- Listas com hifen (-) para itens
+- Listas numeradas (1. 2. 3.) para sequencias ou etapas
+- **Negrito** para destaques
+- Paragrafos curtos (2-3 linhas max)
+- Linha em branco para separar secoes
+
+4. FORMATACAO PROIBIDA
+- NUNCA use titulos markdown (##, ###, ####)
+- NUNCA use linhas horizontais (---)
+- NUNCA use tabelas markdown
+- NUNCA use blockquotes (>)
+- NUNCA use blocos de codigo (```)
+
+5. EXEMPLO DE RESPOSTA BEM FORMATADA
+"Analisei os dados da Meridian. Tres pontos principais:
+
+- **EBITDA normalizado**: R$ 42M (vs. R$ 38M reportado) — ajuste de R$ 4M por leasing IFRS 16
+- **Capital de giro**: ciclo de 87 dias, acima da media do setor (72 dias). Pressao no fluxo de caixa operacional
+- **Endividamento**: divida liquida/EBITDA de 2.8x — dentro do covenant mas sem folga
+
+Proximo passo: o Financial Modeler precisa dessas premissas para rodar o DCF. Recomendo aprovar esta etapa e avancar."
+"""
 
 MD_SYSTEM_PROMPT = """Voce é o MD Orchestrator — Managing Director Sênior com 20 anos de experiência em Investment Banking no Brasil, tendo liderado mais de 500 transações de DCM e ECM ao longo da carreira.
 

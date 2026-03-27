@@ -56,4 +56,19 @@
   .section-title {
     @apply text-xs font-bold uppercase tracking-[0.15em] text-gray-500 mb-3;
   }
+
+  /* Formatted agent messages */
+  .formatted-msg p {
+    @apply leading-relaxed;
+  }
+  .formatted-msg ul,
+  .formatted-msg ol {
+    @apply text-gray-300;
+  }
+  .formatted-msg li {
+    @apply leading-relaxed pl-1;
+  }
+  .formatted-msg li::marker {
+    @apply text-gray-500;
+  }
 }
