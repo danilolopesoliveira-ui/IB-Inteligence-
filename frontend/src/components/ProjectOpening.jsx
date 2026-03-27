@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, DOC_CHECKLIST } from '../data/mockData'
-import { CheckCircle, Clock, XCircle, Upload, ChevronDown, AlertTriangle, FolderOpen, File, Plus } from 'lucide-react'
+import { CheckCircle, Clock, XCircle, Upload, ChevronDown, AlertTriangle, FolderOpen, File, Plus, Ban } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -96,10 +96,14 @@ function StepIdentification({ form, setForm }) {
   )
 }
 
-function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
+function StepChecklist({ form, uploadedDocs, setUploadedDocs, disabledDocs, setDisabledDocs }) {
   const { toast } = useApp()
   const [uploading, setUploading] = useState(null)
   const fileRefs = useRef({})
+
+  const toggleDisabled = (idx) => {
+    setDisabledDocs(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx])
+  }
 
   const handleUpload = async (idx, file) => {
     const doc = DOC_CHECKLIST[idx]
@@ -165,29 +169,33 @@ function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
         const files = uploadedDocs[idx]?.files || []
         const atLimit = files.length >= doc.maxFiles
         const hasFiles = files.length > 0
+        const isDisabled = disabledDocs.includes(idx)
         return (
-          <div key={doc.id} className={`card p-3 transition-colors ${!atLimit && uploading === null ? 'hover:border-gold/30 cursor-pointer' : ''}`}
-          onClick={() => !atLimit && uploading === null && fileRefs.current[idx]?.click()}
-        >
+          <div
+            key={doc.id}
+            className={`card p-3 transition-colors ${isDisabled ? 'opacity-40 border-dashed' : (!atLimit && uploading === null ? 'hover:border-gold/30 cursor-pointer' : '')}`}
+            onClick={() => !isDisabled && !atLimit && uploading === null && fileRefs.current[idx]?.click()}
+          >
             <div className="flex items-center gap-3">
-              {uploading === idx
-                ? <Upload size={18} className="text-gold animate-bounce flex-shrink-0" />
-                : hasFiles
-                  ? <CheckCircle size={18} className="text-accent-green flex-shrink-0" />
-                  : <Clock size={18} className={`flex-shrink-0 ${doc.required ? 'text-gold' : 'text-gray-500'}`} />
+              {isDisabled
+                ? <Ban size={18} className="text-gray-600 flex-shrink-0" />
+                : uploading === idx
+                  ? <Upload size={18} className="text-gold animate-bounce flex-shrink-0" />
+                  : hasFiles
+                    ? <CheckCircle size={18} className="text-accent-green flex-shrink-0" />
+                    : <Clock size={18} className={`flex-shrink-0 ${doc.required ? 'text-gold' : 'text-gray-500'}`} />
               }
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-200">{doc.label}</span>
-                  {!doc.required && <span className="text-[9px] text-gray-500 bg-surface-200 px-1.5 py-0.5 rounded">Opcional</span>}
+                  <span className={`text-sm ${isDisabled ? 'line-through text-gray-500' : 'text-gray-200'}`}>{doc.label}</span>
+                  {!doc.required && !isDisabled && <span className="text-[9px] text-gray-500 bg-surface-200 px-1.5 py-0.5 rounded">Opcional</span>}
+                  {isDisabled && <span className="text-[9px] text-gray-500 bg-surface-200 px-1.5 py-0.5 rounded">Não aplicável</span>}
                 </div>
-                {!atLimit && uploading !== idx && (
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    {uploading === idx ? 'Enviando...' : 'Clique para selecionar arquivo'}
-                  </p>
+                {!isDisabled && !atLimit && uploading !== idx && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">Clique para selecionar arquivo</p>
                 )}
               </div>
-              <span className="text-[10px] text-gray-500 font-medium">{files.length}/{doc.maxFiles}</span>
+              {!isDisabled && <span className="text-[10px] text-gray-500 font-medium">{files.length}/{doc.maxFiles}</span>}
               <input
                 type="file"
                 ref={el => fileRefs.current[idx] = el}
@@ -195,20 +203,29 @@ function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
                 accept=".pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg"
                 onChange={e => { e.stopPropagation(); handleUpload(idx, e.target.files[0]) }}
               />
+              {!isDisabled && (
+                <button
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] border transition-colors flex-shrink-0 ${
+                    uploading === idx ? 'border-gold/40 text-gold animate-pulse' :
+                    atLimit ? 'border-surface-200 text-gray-600 cursor-not-allowed opacity-40' :
+                    'border-gold/40 text-gold hover:bg-gold/10'
+                  }`}
+                  title={atLimit ? `Limite de ${doc.maxFiles} arquivos atingido` : 'Enviar arquivo'}
+                  onClick={e => { e.stopPropagation(); !atLimit && uploading === null && fileRefs.current[idx]?.click() }}
+                  disabled={uploading !== null || atLimit}
+                >
+                  {uploading === idx ? <><Upload size={11} /> Enviando...</> : <><Plus size={11} /> Anexar</>}
+                </button>
+              )}
               <button
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] border transition-colors flex-shrink-0 ${
-                  uploading === idx ? 'border-gold/40 text-gold animate-pulse' :
-                  atLimit ? 'border-surface-200 text-gray-600 cursor-not-allowed opacity-40' :
-                  'border-gold/40 text-gold hover:bg-gold/10'
-                }`}
-                title={atLimit ? `Limite de ${doc.maxFiles} arquivos atingido` : 'Enviar arquivo'}
-                onClick={e => { e.stopPropagation(); !atLimit && uploading === null && fileRefs.current[idx]?.click() }}
-                disabled={uploading !== null || atLimit}
+                onClick={e => { e.stopPropagation(); toggleDisabled(idx) }}
+                title={isDisabled ? 'Reativar documento' : 'Marcar como não aplicável'}
+                className={`p-1.5 rounded transition-colors flex-shrink-0 ${isDisabled ? 'text-accent-green hover:bg-accent-green/10' : 'text-gray-600 hover:text-accent-red hover:bg-accent-red/10'}`}
               >
-                {uploading === idx ? <><Upload size={11} /> Enviando...</> : <><Plus size={11} /> Anexar</>}
+                {isDisabled ? <CheckCircle size={14} /> : <XCircle size={14} />}
               </button>
             </div>
-            {hasFiles && (
+            {hasFiles && !isDisabled && (
               <div className="mt-2 ml-7 flex flex-wrap gap-1.5">
                 {files.map((f, j) => (
                   <span key={j} className="flex items-center gap-1 text-[10px] text-accent-green bg-accent-green/10 px-2 py-0.5 rounded">
@@ -395,17 +412,19 @@ export default function ProjectOpening() {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [uploadedDocs, setUploadedDocs] = useState({})
+  const [disabledDocs, setDisabledDocs] = useState([])
 
   const submit = async () => {
     if (!form.company.trim()) { toast('Informe o nome da empresa', 'error'); return }
     const opId = `op_${Date.now()}`
     const capturedForm = { ...form }
-    const docs = DOC_CHECKLIST.map((doc, idx) => ({ ...doc, files: uploadedDocs[idx]?.files || [] }))
+    const docs = DOC_CHECKLIST.map((doc, idx) => ({ ...doc, files: uploadedDocs[idx]?.files || [], disabled: disabledDocs.includes(idx) }))
     dispatch({ type: 'OPEN_PROJECT', payload: { form: capturedForm, docs, opId } })
     toast(`Projeto ${capturedForm.company} aberto! Etapa 1 em execucao...`, 'info')
     setStep(0)
     setForm({ ...EMPTY_FORM })
     setUploadedDocs({})
+    setDisabledDocs([])
 
     // Fetch file context uploaded for this company
     let fileContext = ''
@@ -485,7 +504,7 @@ export default function ProjectOpening() {
       <div className="card p-6">
         <Stepper step={step} setStep={setStep} />
         {step === 0 && <StepIdentification form={form} setForm={setForm} />}
-        {step === 1 && <StepChecklist form={form} uploadedDocs={uploadedDocs} setUploadedDocs={setUploadedDocs} />}
+        {step === 1 && <StepChecklist form={form} uploadedDocs={uploadedDocs} setUploadedDocs={setUploadedDocs} disabledDocs={disabledDocs} setDisabledDocs={setDisabledDocs} />}
         {step === 2 && <StepAgents form={form} setForm={setForm} />}
 
         <div className="flex justify-between mt-6 pt-4 border-t border-surface-200">

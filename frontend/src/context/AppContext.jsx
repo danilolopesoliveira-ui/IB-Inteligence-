@@ -202,7 +202,7 @@ function reducer(state, action) {
       const opId = action.payload.opId || `op_${Date.now()}`
       const now = new Date().toISOString()
 
-      const pendingDocs = docs.filter(d => d.required && d.files.length === 0).map(d => d.label)
+      const pendingDocs = docs.filter(d => d.required && d.files.length === 0 && !d.disabled).map(d => d.label)
       const pendingNote = pendingDocs.length > 0
         ? `Documentos pendentes: ${pendingDocs.join(', ')}. Os agentes prosseguem com o disponivel e solicitarao os itens faltantes conforme necessario.`
         : 'Documentacao completa recebida.'
