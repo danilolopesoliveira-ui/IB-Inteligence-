@@ -3,14 +3,21 @@ import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIO
 
 const AppContext = createContext(null)
 
-const DATA_VERSION = '2026.04.b'
+const DATA_VERSION = '2026.05.a'
+const AGENTS_VERSION = '2026.04.c'
 function checkAndClearStorage() {
   if (localStorage.getItem('ib_data_version') !== DATA_VERSION) {
     localStorage.removeItem('ib_operations')
     localStorage.removeItem('ib_thread_messages')
     localStorage.removeItem('ib_tasks')
+    localStorage.removeItem('ib_agents')
     // ib_md_chat NAO e limpo — conversas com o MD devem persistir sempre
     localStorage.setItem('ib_data_version', DATA_VERSION)
+  }
+  // Versao separada para agentes — atualiza prompts sem apagar operacoes
+  if (localStorage.getItem('ib_agents_version') !== AGENTS_VERSION) {
+    localStorage.removeItem('ib_agents')
+    localStorage.setItem('ib_agents_version', AGENTS_VERSION)
   }
 }
 checkAndClearStorage()
@@ -42,13 +49,28 @@ function loadTasks() {
   }
 }
 
+function loadAgents() {
+  try {
+    const saved = localStorage.getItem('ib_agents')
+    if (!saved) return AGENTS.map(a => ({ ...a }))
+    const savedAgents = JSON.parse(saved)
+    // Merge saved overrides onto the default AGENTS list (preserves new agents added in code updates)
+    return AGENTS.map(a => {
+      const override = savedAgents.find(s => s.id === a.id)
+      return override ? { ...a, ...override } : { ...a }
+    })
+  } catch {
+    return AGENTS.map(a => ({ ...a }))
+  }
+}
+
 const initialState = {
   currentPage: 'kanban',
   darkMode: true,
   tasks: loadTasks(),
   operations: loadOperations(),
   messages: loadMessages(),
-  agents: AGENTS.map(a => ({ ...a })),
+  agents: loadAgents(),
   training: TRAINING_RECOMMENDATIONS.map(t => ({ ...t })),
   mdDemands: MD_DEMANDS.map(d => ({ ...d })),
   proposals: [],
@@ -113,6 +135,21 @@ function reducer(state, action) {
               time: new Date().toISOString(),
               type: 'resposta',
             }],
+            unread: m.unread + 1,
+          }
+        }
+        return m
+      })
+      try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
+      return { ...state, messages }
+    }
+    case 'SET_THREAD_APPROVAL': {
+      const messages = state.messages.map(m => {
+        if (m.id === action.payload.threadId) {
+          return {
+            ...m,
+            awaitingApproval: action.payload.awaitingApproval,
+            approvalTaskIds: action.payload.approvalTaskIds || [],
           }
         }
         return m
@@ -124,7 +161,15 @@ function reducer(state, action) {
       const agents = state.agents.map(a =>
         a.id === action.payload.id ? { ...a, ...action.payload.updates } : a
       )
+      try { localStorage.setItem('ib_agents', JSON.stringify(agents)) } catch {}
       return { ...state, agents }
+    }
+    case 'TOGGLE_OPERATION_PAUSE': {
+      const operations = state.operations.map(o =>
+        o.id === action.payload ? { ...o, paused: !o.paused } : o
+      )
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      return { ...state, operations }
     }
     case 'COMPLETE_TRAINING': {
       const training = state.training.map(t =>

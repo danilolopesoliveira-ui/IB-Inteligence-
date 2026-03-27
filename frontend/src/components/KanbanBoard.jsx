@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, KANBAN_COLUMNS } from '../data/mockData'
-import { Clock, AlertTriangle, GripVertical, X, MessageCircle, Play, CheckCircle, AlertOctagon, ArrowUpRight, ShieldAlert, Zap, Loader } from 'lucide-react'
-
-const API = import.meta.env.VITE_API_URL || ''
+import { Clock, AlertTriangle, GripVertical, X, MessageCircle, Play, CheckCircle, AlertOctagon, ArrowUpRight, ShieldAlert, Zap } from 'lucide-react'
 
 const DIFFICULTY_COLORS = ['#10b981', '#10b981', '#f59e0b', '#ef4444', '#dc2626']
 
@@ -17,27 +15,6 @@ const LOG_TYPE_CONFIG = {
   alert:      { icon: AlertTriangle, color: '#ef4444', label: 'Alerta' },
   blocked:    { icon: AlertOctagon, color: '#ef4444', label: 'Bloqueio' },
   escalation: { icon: ShieldAlert, color: '#f59e0b', label: 'Escalacao' },
-}
-
-// Maps task suffix → next tasks and required completions
-const PIPELINE_NEXT = {
-  accountant: { nexts: ['research'],            requires: ['accountant', 'legal'] },
-  legal:      { nexts: ['research'],            requires: ['accountant', 'legal'] },
-  research:   { nexts: ['modeling'],            requires: ['research'] },
-  modeling:   { nexts: ['specialist', 'risk'],  requires: ['modeling'] },
-  specialist: { nexts: ['deck'],                requires: ['specialist', 'risk'] },
-  risk:       { nexts: ['deck'],                requires: ['specialist', 'risk'] },
-  deck:       { nexts: [],                      requires: [] },
-}
-
-function getTaskSuffix(taskId) {
-  const parts = taskId.split('_')
-  return parts[parts.length - 1]
-}
-
-function getOpId(taskId) {
-  const parts = taskId.split('_')
-  return parts.slice(0, parts.length - 1).join('_')
 }
 
 function formatDate(isoStr) {
@@ -57,17 +34,14 @@ function DifficultyDots({ level }) {
 // ── Task Detail Modal ────────────────────────────────────────────────────────
 
 function TaskDetailModal({ taskId, onClose }) {
-  const { state, dispatch, toast } = useApp()
+  const { state } = useApp()
   const task = state.tasks.find(t => t.id === taskId)
-  const [approving, setApproving] = useState(false)
 
   if (!task) return null
 
   const agent = AGENTS.find(a => a.id === task.agent)
   const operation = state.operations.find(o => o.id === task.operation)
   const log = task.log || []
-  const suffix = getTaskSuffix(taskId)
-  const opId = getOpId(taskId)
 
   const grouped = {}
   log.forEach(entry => {
@@ -75,88 +49,6 @@ function TaskDetailModal({ taskId, onClose }) {
     if (!grouped[day]) grouped[day] = []
     grouped[day].push(entry)
   })
-
-  const fetchFileContext = async () => {
-    if (!operation?.company) return ''
-    try {
-      const r = await fetch(`${API}/api/files-context/${encodeURIComponent(operation.company)}`)
-      const d = await r.json()
-      return d.context || ''
-    } catch { return '' }
-  }
-
-  const approveTask = async () => {
-    setApproving(true)
-    try {
-      const now = new Date().toISOString()
-      dispatch({ type: 'APPEND_TASK_LOG', payload: {
-        taskId,
-        column: 'Concluido',
-        entries: [{ time: now, agent: 'md_orchestrator', type: 'approve', text: `MD aprovou e concluiu: ${task.title}` }],
-      }})
-      toast('Tarefa aprovada!', 'success')
-
-      const pipelineInfo = PIPELINE_NEXT[suffix]
-      if (!pipelineInfo || pipelineInfo.nexts.length === 0) return
-
-      const opTasks = state.tasks.filter(t => t.id.startsWith(opId + '_'))
-      const allRequiredDone = pipelineInfo.requires.every(req => {
-        if (req === suffix) return true // current task just approved
-        const reqTask = opTasks.find(t => getTaskSuffix(t.id) === req)
-        return reqTask && reqTask.column === 'Concluido'
-      })
-
-      if (!allRequiredDone) {
-        toast('Aguardando conclusao das tarefas paralelas antes de avancar', 'info')
-        return
-      }
-
-      const fileContext = await fetchFileContext()
-
-      for (const nextSuffix of pipelineInfo.nexts) {
-        const nextTask = opTasks.find(t => getTaskSuffix(t.id) === nextSuffix)
-        if (!nextTask || nextTask.column !== 'Backlog') continue
-        try {
-          const r = await fetch(`${API}/api/run-agent-task`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              agent_id: nextTask.agent,
-              operation: operation || { id: opId },
-              file_context: fileContext,
-              task_title: nextTask.title,
-            }),
-          })
-          const data = await r.json()
-          if (data.text) {
-            const t2 = new Date().toISOString()
-            dispatch({ type: 'APPEND_TASK_LOG', payload: {
-              taskId: nextTask.id,
-              column: 'Em Revisao',
-              entries: [
-                { time: t2, agent: nextTask.agent, type: 'start', text: `Etapa iniciada apos aprovacao: ${nextTask.title}` },
-                { time: t2, agent: nextTask.agent, type: 'progress', text: data.text },
-              ],
-            }})
-            dispatch({ type: 'ADD_AGENT_RESPONSE', payload: {
-              threadId: `msg_${opId}`,
-              agentId: nextTask.agent,
-              text: data.text,
-            }})
-          }
-        } catch (err) {
-          console.error(`[${nextTask.agent}] Erro:`, err)
-        }
-      }
-      toast('Proxima etapa acionada!', 'success')
-    } catch (err) {
-      toast(`Erro: ${err.message}`, 'error')
-    } finally {
-      setApproving(false)
-    }
-  }
-
-  const canApprove = task.column === 'Em Revisao' && !approving
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={onClose}>
@@ -199,15 +91,6 @@ function TaskDetailModal({ taskId, onClose }) {
             <span className="text-[10px] text-gray-500 ml-auto">{log.length} eventos</span>
           </div>
 
-          {/* Action buttons */}
-          {canApprove && (
-            <div className="flex gap-2 mt-4">
-              <button onClick={approveTask} disabled={approving} className="btn-ghost text-xs flex items-center gap-1.5 px-3 py-1.5 border border-accent-green text-accent-green hover:bg-accent-green/10">
-                {approving ? <Loader size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                {approving ? 'Aprovando...' : 'Aprovar e Avançar Etapa'}
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Timeline / Activity Log */}
