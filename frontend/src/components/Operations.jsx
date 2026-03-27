@@ -1,8 +1,22 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, BRL_COMPACT, DOC_CHECKLIST } from '../data/mockData'
-import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play } from 'lucide-react'
+import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info } from 'lucide-react'
 import TermSheetModal from './TermSheetModal'
+
+const API = import.meta.env.VITE_API_URL || ''
+
+// Documentos esperados do pipeline por agente (ordem de execução)
+const EXPECTED_AGENT_DOCS = [
+  { agent: 'accountant',       name: 'Análise Contábil e Ajustes (IFRS 16)',  stage: 'Etapa 1', reason: 'Aguardando execução do Contador — Etapa 1 do pipeline.' },
+  { agent: 'legal_advisor',    name: 'Due Diligence Jurídica',                stage: 'Etapa 1', reason: 'Aguardando execução do Jurídico — Etapa 1 do pipeline.' },
+  { agent: 'research_analyst', name: 'Dossiê Analítico (Research Report)',    stage: 'Etapa 2', reason: 'Aguardando conclusão da Etapa 1 (Contador + Jurídico).' },
+  { agent: 'financial_modeler',name: 'Modelo Financeiro e Projeções',         stage: 'Etapa 3', reason: 'Aguardando conclusão da Etapa 2 (Research Report).' },
+  { agent: 'dcm_specialist',   name: 'Relatório de Viabilidade DCM',          stage: 'Etapa 4', reason: 'Aguardando conclusão da Etapa 3 (Modelagem Financeira).' },
+  { agent: 'ecm_specialist',   name: 'Relatório de Viabilidade ECM',          stage: 'Etapa 4', reason: 'Aguardando conclusão da Etapa 3 (Modelagem Financeira).' },
+  { agent: 'risk_compliance',  name: 'Relatório de Risco e Compliance',       stage: 'Etapa 4', reason: 'Aguardando conclusão da Etapa 3 (Modelagem Financeira).' },
+  { agent: 'deck_builder',     name: 'Book de Crédito / CIM e Teaser',        stage: 'Etapa 5', reason: 'Aguardando conclusão da Etapa 4 (Viabilidade + Risk).' },
+]
 
 const STATUS_CONFIG = {
   analisado: { label: 'Analisado', cls: 'badge-green', icon: CheckCircle },
@@ -13,12 +27,64 @@ const STATUS_CONFIG = {
   aprovado: { label: 'Aprovado', cls: 'badge-green', icon: CheckCircle },
 }
 
+function UnavailableDocModal({ doc, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-surface-50 border border-surface-200 rounded-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Info size={16} className="text-gold flex-shrink-0" />
+            <h3 className="text-sm font-bold text-white">Documento não disponível</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white p-1"><X size={14} /></button>
+        </div>
+        <p className="text-xs font-medium text-gray-200 mb-1">{doc.name}</p>
+        <p className="text-[11px] text-gray-400 leading-relaxed mb-3">{doc.reason}</p>
+        <p className="text-[10px] text-gray-600">Etapa: <span className="text-gold">{doc.stage}</span> · Agente: <span className="text-gray-400">{AGENTS.find(a => a.id === doc.agent)?.name || doc.agent}</span></p>
+        <button onClick={onClose} className="btn-ghost text-xs mt-4 w-full">Fechar</button>
+      </div>
+    </div>
+  )
+}
+
 function OperationDetail({ operation, onBack, onTermSheet }) {
   const [tab, setTab] = useState('client')
-  const { state, dispatch } = useApp()
+  const { state, dispatch, toast } = useApp()
+  const fileInputRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+  const [unavailableDoc, setUnavailableDoc] = useState(null)
 
   // Always read operation from live state (avoids stale snapshot)
   const op = state.operations.find(o => o.id === operation.id) || operation
+
+  const handleClientUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('company', op.company || 'geral')
+      const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!data.ok) throw new Error('Falha no upload')
+      dispatch({ type: 'ADD_CLIENT_DOC', payload: {
+        opId: op.id,
+        doc: {
+          name: data.file,
+          type: file.name.split('.').pop().toUpperCase(),
+          date: new Date().toLocaleDateString('pt-BR'),
+          status: 'em_analise',
+        }
+      }})
+      toast(`Documento "${data.file}" enviado com sucesso`, 'success')
+    } catch (err) {
+      toast(`Erro no upload: ${err.message}`, 'error')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
 
   // Build timeline from task log entries (skip long 'progress' entries)
   const timelineEvents = (() => {
@@ -122,8 +188,22 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
         ))}
       </div>
 
+      {unavailableDoc && <UnavailableDocModal doc={unavailableDoc} onClose={() => setUnavailableDoc(null)} />}
+
       {tab === 'client' && (
-        <div className="space-y-2">
+        <div>
+          <div className="flex justify-end mb-3">
+            <input ref={fileInputRef} type="file" className="hidden" onChange={handleClientUpload} />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="btn-ghost flex items-center gap-1.5 text-xs border border-surface-200 hover:border-gold hover:text-gold"
+            >
+              {uploading ? <Loader size={13} className="animate-spin" /> : <Upload size={13} />}
+              {uploading ? 'Enviando...' : 'Enviar Documento'}
+            </button>
+          </div>
+          <div className="space-y-2">
           {op.clientDocs
             ? op.clientDocs.map((doc, i) => {
                 const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.pendente
@@ -154,33 +234,62 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                 )
               })
           }
+          </div>
         </div>
       )}
 
-      {tab === 'agent' && (
-        <div className="space-y-2">
-          {(op.agentDocs || []).length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">Aguardando outputs dos agentes — pipeline em andamento.</p>
-          ) : op.agentDocs.map((doc, i) => {
-            const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.rascunho
-            const agent = AGENTS.find(a => a.id === doc.agent)
-            return (
-              <div key={i} className="card-hover p-4 flex items-center gap-4">
-                <FileText size={18} className="text-gold flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm text-gray-200">{doc.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px]" style={{ color: agent?.color }}>{agent?.name?.split(' ')[0]}</span>
-                    <span className="text-[10px] text-gray-500">· {doc.version} · {doc.date}</span>
+      {tab === 'agent' && (() => {
+        // Filtra docs esperados conforme tipo da operação (DCM ou ECM)
+        const isECM = op.type === 'ECM'
+        const expectedDocs = EXPECTED_AGENT_DOCS.filter(d =>
+          isECM ? d.agent !== 'dcm_specialist' : d.agent !== 'ecm_specialist'
+        )
+        const generatedDocs = op.agentDocs || []
+        return (
+          <div className="space-y-2">
+            {expectedDocs.map((expected, i) => {
+              const generated = generatedDocs.find(d => d.agent === expected.agent)
+              const agent = AGENTS.find(a => a.id === expected.agent)
+              if (generated) {
+                const st = STATUS_CONFIG[generated.status] || STATUS_CONFIG.rascunho
+                return (
+                  <div key={i} className="card-hover p-4 flex items-center gap-4">
+                    <FileText size={18} className="text-gold flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-200">{generated.name || expected.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px]" style={{ color: agent?.color }}>{agent?.name?.split(' ')[0]}</span>
+                        <span className="text-[10px] text-gray-500">· {generated.version} · {generated.date}</span>
+                      </div>
+                    </div>
+                    <span className={st.cls}>{st.label}</span>
+                    <button className="btn-ghost p-1"><Download size={14} /></button>
                   </div>
+                )
+              }
+              // Documento ainda não gerado — clicável para ver motivo
+              return (
+                <div
+                  key={i}
+                  onClick={() => setUnavailableDoc(expected)}
+                  className="card-hover p-4 flex items-center gap-4 cursor-pointer opacity-50 hover:opacity-70 transition-opacity"
+                >
+                  <FileText size={18} className="text-gray-600 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-400">{expected.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px]" style={{ color: agent?.color || '#666' }}>{agent?.name?.split(' ')[0] || expected.agent}</span>
+                      <span className="text-[10px] text-gray-600">· {expected.stage}</span>
+                    </div>
+                  </div>
+                  <span className="bg-surface-200 text-gray-500 badge text-[10px]">Não Disponível</span>
+                  <Info size={14} className="text-gray-600 flex-shrink-0" />
                 </div>
-                <span className={st.cls}>{st.label}</span>
-                <button className="btn-ghost p-1"><Download size={14} /></button>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {tab === 'timeline' && (
         <div className="relative pl-6 space-y-0">

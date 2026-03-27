@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, MD_CHAT_HISTORY } from '../data/mockData'
-import { CheckCircle, Clock, Loader, Send, Upload, Link2, BookOpen } from 'lucide-react'
+import { CheckCircle, Clock, Loader, Send, Upload, Link2, BookOpen, Paperclip } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -62,6 +62,8 @@ function MDChat() {
   })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
   const endRef = useRef(null)
 
   useEffect(() => { try { localStorage.setItem('ib_md_chat', JSON.stringify(messages)) } catch {} }, [messages])
@@ -127,6 +129,28 @@ function MDChat() {
     }
   }
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('company', state.operations[0]?.company || 'geral')
+      const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!data.ok) throw new Error('Falha no upload')
+      const text = `[Documento enviado: ${data.file} (${Math.round(data.size_kb)}KB)]`
+      setMessages(prev => [...prev, { from: 'user', text, time: new Date().toISOString() }])
+      toast(`Arquivo "${data.file}" enviado ao MD`, 'success')
+    } catch (err) {
+      toast(`Erro no upload: ${err.message}`, 'error')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
   const mdAgent = AGENTS.find(a => a.id === 'md_orchestrator')
 
   return (
@@ -166,8 +190,17 @@ function MDChat() {
         </div>
       )}
       <div className="flex items-center gap-2">
-        <input className="input-field flex-1" placeholder="Enviar instrucao ao MD..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} disabled={loading} />
-        <button onClick={send} className="btn-primary p-2" disabled={loading}><Send size={16} /></button>
+        <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading || uploading}
+          className="btn-ghost p-2 text-gray-400 hover:text-gold flex-shrink-0"
+          title="Enviar documento ao MD"
+        >
+          {uploading ? <Loader size={15} className="animate-spin" /> : <Paperclip size={15} />}
+        </button>
+        <input className="input-field flex-1" placeholder="Enviar instrucao ao MD..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} disabled={loading || uploading} />
+        <button onClick={send} className="btn-primary p-2" disabled={loading || uploading}><Send size={16} /></button>
       </div>
     </div>
   )

@@ -80,6 +80,7 @@ const initialState = {
   filterOperation: null,
   toasts: [],
   sidebarCollapsed: false,
+  pendingThreadOpen: null,
 }
 
 function reducer(state, action) {
@@ -289,6 +290,35 @@ function reducer(state, action) {
       try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
       return { ...state, messages }
     }
+    case 'ADD_AGENT_DOC': {
+      // payload: { opId, doc: { name, agent, status, version, date } }
+      const operations = state.operations.map(o => {
+        if (o.id !== action.payload.opId) return o
+        const existing = o.agentDocs || []
+        const idx = existing.findIndex(d => d.agent === action.payload.doc.agent)
+        const agentDocs = idx >= 0
+          ? existing.map((d, i) => i === idx ? { ...d, ...action.payload.doc } : d)
+          : [...existing, action.payload.doc]
+        return { ...o, agentDocs }
+      })
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      return { ...state, operations }
+    }
+    case 'ADD_CLIENT_DOC': {
+      // payload: { opId, doc: { name, type, date, status } }
+      const operations = state.operations.map(o => {
+        if (o.id !== action.payload.opId) return o
+        const clientDocs = [...(o.clientDocs || []), action.payload.doc]
+        return { ...o, clientDocs }
+      })
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      return { ...state, operations }
+    }
+    case 'OPEN_AGENT_CHAT':
+      // payload: { agentId, taskId, operationId, subject }
+      return { ...state, currentPage: 'reviews', pendingThreadOpen: action.payload }
+    case 'CLEAR_PENDING_THREAD':
+      return { ...state, pendingThreadOpen: null }
     case 'ADD_PROPOSAL':
       return { ...state, proposals: [action.payload, ...state.proposals] }
     case 'ADD_TOAST':

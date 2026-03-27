@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../data/mockData'
-import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X, Loader } from 'lucide-react'
+import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X, Loader, Paperclip } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -10,6 +10,17 @@ const TYPE_ICONS = {
   revisao: { icon: RotateCcw, label: 'Revisao', cls: 'text-gold' },
   alerta: { icon: AlertTriangle, label: 'Alerta', cls: 'text-accent-red' },
   resposta: { icon: CheckCircle, label: 'Resposta', cls: 'text-accent-green' },
+}
+
+const AGENT_DOC_NAMES = {
+  accountant:        'Análise Contábil e Ajustes (IFRS 16)',
+  legal_advisor:     'Due Diligence Jurídica',
+  research_analyst:  'Dossiê Analítico (Research Report)',
+  financial_modeler: 'Modelo Financeiro e Projeções',
+  dcm_specialist:    'Relatório de Viabilidade DCM',
+  ecm_specialist:    'Relatório de Viabilidade ECM',
+  risk_compliance:   'Relatório de Risco e Compliance',
+  deck_builder:      'Book de Crédito / CIM e Teaser',
 }
 
 // Pipeline advancement logic — mirrors the project pipeline stages
@@ -33,6 +44,8 @@ function Thread({ thread }) {
   const [reply, setReply] = useState('')
   const [loading, setLoading] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
 
   const agent = AGENTS.find(a => a.id === thread.agent)
@@ -178,6 +191,17 @@ function Thread({ thread }) {
                 agentId: nextTask.agent,
                 text: data.text,
               }})
+              // Registra documento gerado em Documentos Gerados da operação
+              dispatch({ type: 'ADD_AGENT_DOC', payload: {
+                opId: opId,
+                doc: {
+                  name: AGENT_DOC_NAMES[nextTask.agent] || nextTask.title,
+                  agent: nextTask.agent,
+                  status: 'em_revisao',
+                  version: 'v1.0',
+                  date: new Date().toLocaleDateString('pt-BR'),
+                }
+              }})
               newTaskIds.push(nextTask.id)
             }
           } catch (err) {
@@ -201,6 +225,28 @@ function Thread({ thread }) {
       toast(`Erro: ${err.message}`, 'error')
     } finally {
       setApproving(false)
+    }
+  }
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('company', op?.company || 'geral')
+      const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!data.ok) throw new Error('Falha no upload')
+      const text = `[Documento enviado: ${data.file} (${Math.round(data.size_kb)}KB)]`
+      dispatch({ type: 'SEND_MESSAGE', payload: { threadId: thread.id, text } })
+      toast(`Arquivo "${data.file}" enviado`, 'success')
+    } catch (err) {
+      toast(`Erro no upload: ${err.message}`, 'error')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
     }
   }
 
@@ -286,15 +332,24 @@ function Thread({ thread }) {
 
       {/* Input */}
       <div className="flex items-center gap-2 pt-3 border-t border-surface-200">
+        <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading || approving || uploading}
+          className="btn-ghost p-2 text-gray-400 hover:text-gold flex-shrink-0"
+          title="Enviar documento"
+        >
+          {uploading ? <Loader size={15} className="animate-spin" /> : <Paperclip size={15} />}
+        </button>
         <input
           className="input-field flex-1"
           placeholder="Escrever resposta..."
           value={reply}
           onChange={e => setReply(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
-          disabled={loading || approving}
+          disabled={loading || approving || uploading}
         />
-        <button onClick={send} className="btn-primary p-2" disabled={loading || approving}><Send size={16} /></button>
+        <button onClick={send} className="btn-primary p-2" disabled={loading || approving || uploading}><Send size={16} /></button>
       </div>
     </div>
   )
@@ -372,12 +427,41 @@ function NewThreadModal({ onClose }) {
 }
 
 export default function ReviewsComm() {
-  const { state } = useApp()
+  const { state, dispatch, toast } = useApp()
   const { messages } = state
   const [selectedThread, setSelectedThread] = useState(messages[0]?.id || null)
   const [filterStatus, setFilterStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [showNewThread, setShowNewThread] = useState(false)
+
+  // Abre/cria thread automaticamente quando vem do botão "Consultar MD" do Kanban
+  useEffect(() => {
+    if (!state.pendingThreadOpen) return
+    const { agentId, operationId, subject } = state.pendingThreadOpen
+    dispatch({ type: 'CLEAR_PENDING_THREAD' })
+    // Verifica se já existe thread aberta para esse agente+operação
+    const existing = messages.find(m => m.agent === agentId && m.operation === operationId && m.status === 'aberto')
+    if (existing) {
+      setSelectedThread(existing.id)
+      return
+    }
+    // Cria nova thread
+    const now = new Date().toISOString()
+    const newThread = {
+      id: `msg_${Date.now()}`,
+      agent: agentId,
+      operation: operationId || null,
+      type: 'duvida',
+      subject: subject || `Consulta sobre tarefa`,
+      messages: [],
+      status: 'aberto',
+      urgency: 'media',
+      unread: 0,
+    }
+    dispatch({ type: 'ADD_THREAD', payload: newThread })
+    setSelectedThread(newThread.id)
+    toast('Conversa aberta com o agente', 'info')
+  }, [state.pendingThreadOpen])
 
   const filteredMessages = messages.filter(m => {
     if (filterStatus === 'aberto' && m.status !== 'aberto') return false

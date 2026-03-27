@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, KANBAN_COLUMNS } from '../data/mockData'
-import { Clock, AlertTriangle, GripVertical, X, MessageCircle, Play, CheckCircle, AlertOctagon, ArrowUpRight, ShieldAlert, Zap } from 'lucide-react'
+import { Clock, AlertTriangle, GripVertical, X, MessageCircle, Play, CheckCircle, AlertOctagon, ArrowUpRight, ShieldAlert, Zap, MessageSquare } from 'lucide-react'
 
 const DIFFICULTY_COLORS = ['#10b981', '#10b981', '#f59e0b', '#ef4444', '#dc2626']
 
@@ -34,7 +34,7 @@ function DifficultyDots({ level }) {
 // ── Task Detail Modal ────────────────────────────────────────────────────────
 
 function TaskDetailModal({ taskId, onClose }) {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const task = state.tasks.find(t => t.id === taskId)
 
   if (!task) return null
@@ -66,7 +66,23 @@ function TaskDetailModal({ taskId, onClose }) {
               <h3 className="text-base font-bold text-white">{task.title}</h3>
               <p className="text-[11px] text-gray-500 mt-1">{operation?.name} · {operation?.company}</p>
             </div>
-            <button onClick={onClose} className="text-gray-500 hover:text-white p-1"><X size={18} /></button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  dispatch({ type: 'OPEN_AGENT_CHAT', payload: {
+                    agentId: task.agent,
+                    taskId: task.id,
+                    operationId: task.operation,
+                    subject: `Consulta: ${task.title}`,
+                  }})
+                  onClose()
+                }}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border border-gold/40 text-gold hover:bg-gold/10 transition-colors"
+              >
+                <MessageSquare size={12} /> Consultar MD
+              </button>
+              <button onClick={onClose} className="text-gray-500 hover:text-white p-1"><X size={18} /></button>
+            </div>
           </div>
 
           {/* Stats bar */}
