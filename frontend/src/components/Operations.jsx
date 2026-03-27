@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, BRL_COMPACT, DOC_CHECKLIST } from '../data/mockData'
-import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X } from 'lucide-react'
+import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play } from 'lucide-react'
 import TermSheetModal from './TermSheetModal'
 
 const STATUS_CONFIG = {
@@ -15,6 +15,31 @@ const STATUS_CONFIG = {
 
 function OperationDetail({ operation, onBack, onTermSheet }) {
   const [tab, setTab] = useState('client')
+  const { state, dispatch } = useApp()
+
+  // Always read operation from live state (avoids stale snapshot)
+  const op = state.operations.find(o => o.id === operation.id) || operation
+
+  // Build timeline from task log entries (skip long 'progress' entries)
+  const timelineEvents = (() => {
+    const opTasks = state.tasks.filter(t => t.operation === op.id)
+    const events = [{
+      time: op.openedAt || new Date().toISOString(),
+      agent: 'md_orchestrator',
+      text: `Projeto aberto no pipeline — ${op.name}`,
+      taskTitle: '',
+    }]
+    opTasks.forEach(task => {
+      ;(task.log || []).forEach(entry => {
+        if (entry.type === 'progress') return
+        const t = entry.time || entry.date
+        if (!t) return
+        events.push({ time: t, agent: entry.agent, type: entry.type, text: entry.text || entry.event || '', taskTitle: task.title })
+      })
+    })
+    return events.sort((a, b) => new Date(a.time) - new Date(b.time))
+  })()
+
   const tabs = [
     { id: 'client', label: 'Documentos do Cliente' },
     { id: 'agent', label: 'Documentos Gerados' },
@@ -27,28 +52,46 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
         <button onClick={onBack} className="btn-ghost flex items-center gap-1 text-xs">
           <ChevronRight size={14} className="rotate-180" /> Voltar
         </button>
-        <button
-          onClick={e => onTermSheet(e, operation.company)}
-          className="btn-primary flex items-center gap-2 text-xs"
-        >
-          <FileSignature size={14} /> Emitir Proposta
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => dispatch({ type: 'TOGGLE_OPERATION_PAUSE', payload: op.id })}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-colors ${op.paused ? 'border-accent-green text-accent-green hover:bg-accent-green/10' : 'border-amber-400/60 text-amber-400 hover:bg-amber-400/10'}`}
+          >
+            {op.paused ? <><Play size={13} /> Reativar Operacao</> : <><Pause size={13} /> Pausar Operacao</>}
+          </button>
+          {!op.paused && (
+            <button
+              onClick={e => onTermSheet(e, op.company)}
+              className="btn-primary flex items-center gap-2 text-xs"
+            >
+              <FileSignature size={14} /> Emitir Proposta
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4 mb-6">
-        <span className={`badge ${operation.type === 'DCM' ? 'badge-blue' : 'badge-green'}`}>{operation.type} — {operation.instrument}</span>
-        <h2 className="text-xl font-bold text-white font-editorial">{operation.name}</h2>
-        <span className="text-xs text-gray-500">{operation.company} · {operation.sector}</span>
+        <span className={`badge ${op.type === 'DCM' ? 'badge-blue' : 'badge-green'}`}>{op.type} — {op.instrument}</span>
+        {op.paused && <span className="badge badge-red">Pausada</span>}
+        <h2 className="text-xl font-bold text-white font-editorial">{op.name}</h2>
+        <span className="text-xs text-gray-500">{op.company} · {op.sector}</span>
       </div>
+
+      {op.paused && (
+        <div className="flex items-center gap-2 px-4 py-3 mb-4 rounded-lg border border-amber-400/30 bg-amber-400/5">
+          <Pause size={14} className="text-amber-400 flex-shrink-0" />
+          <p className="text-xs text-amber-300">Operacao pausada — pipeline suspenso. Documentos e historico preservados. Clique em "Reativar" para retomar.</p>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-5 gap-4 mb-6">
         {[
-          { label: 'Valor', value: BRL_COMPACT(operation.value) },
-          { label: 'Rating', value: operation.rating || '—' },
-          { label: 'Abertura', value: operation.openDate || (operation.openedAt ? new Date(operation.openedAt).toLocaleDateString('pt-BR') : '—') },
-          { label: 'Prazo', value: operation.targetDate || (operation.deadline ? `${operation.deadline} meses` : '—') },
-          { label: 'Status', value: operation.status || '—' },
+          { label: 'Valor', value: BRL_COMPACT(op.value) },
+          { label: 'Rating', value: op.rating || '—' },
+          { label: 'Abertura', value: op.openDate || (op.openedAt ? new Date(op.openedAt).toLocaleDateString('pt-BR') : '—') },
+          { label: 'Prazo', value: op.targetDate || (op.deadline ? `${op.deadline} meses` : '—') },
+          { label: 'Status', value: op.paused ? 'Pausada' : (op.status || '—') },
         ].map(s => (
           <div key={s.label} className="card p-3 text-center">
             <p className="text-[10px] text-gray-500 mb-1">{s.label}</p>
@@ -58,9 +101,9 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
       </div>
 
       {/* Progress bar */}
-      {operation.progress != null && (
+      {op.progress != null && (
         <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden mb-6">
-          <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${operation.progress}%` }} />
+          <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${op.progress}%` }} />
         </div>
       )}
 
@@ -81,8 +124,8 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
 
       {tab === 'client' && (
         <div className="space-y-2">
-          {operation.clientDocs
-            ? operation.clientDocs.map((doc, i) => {
+          {op.clientDocs
+            ? op.clientDocs.map((doc, i) => {
                 const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.pendente
                 return (
                   <div key={i} className="card-hover p-4 flex items-center gap-4">
@@ -97,7 +140,7 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                 )
               })
             : DOC_CHECKLIST.map(doc => {
-                const isPending = operation.pendingDocs?.includes(doc.label)
+                const isPending = op.pendingDocs?.includes(doc.label)
                 const st = isPending ? STATUS_CONFIG.pendente : STATUS_CONFIG.analisado
                 return (
                   <div key={doc.id} className="card-hover p-4 flex items-center gap-4">
@@ -116,9 +159,9 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
 
       {tab === 'agent' && (
         <div className="space-y-2">
-          {(operation.agentDocs || []).length === 0 ? (
+          {(op.agentDocs || []).length === 0 ? (
             <p className="text-sm text-gray-500 py-8 text-center">Aguardando outputs dos agentes — pipeline em andamento.</p>
-          ) : operation.agentDocs.map((doc, i) => {
+          ) : op.agentDocs.map((doc, i) => {
             const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.rascunho
             const agent = AGENTS.find(a => a.id === doc.agent)
             return (
@@ -141,18 +184,21 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
 
       {tab === 'timeline' && (
         <div className="relative pl-6 space-y-0">
-          {(operation.timeline || [{ date: operation.openedAt || operation.openDate, event: 'Projeto aberto no pipeline', agent: 'md_orchestrator' }]).map((evt, i) => {
-            const agent = AGENTS.find(a => a.id === evt.agent)
+          {timelineEvents.map((evt, i) => {
+            const a = AGENTS.find(ag => ag.id === evt.agent)
             return (
               <div key={i} className="relative pb-6 last:pb-0">
-                {i < operation.timeline.length - 1 && (
+                {i < timelineEvents.length - 1 && (
                   <div className="absolute left-[-17px] top-3 w-px h-full bg-surface-200" />
                 )}
-                <div className="absolute left-[-20px] top-1.5 w-2 h-2 rounded-full border-2 border-gold bg-surface" />
+                <div className="absolute left-[-20px] top-1.5 w-2 h-2 rounded-full border-2 border-gold" style={{ background: '#0B0D14' }} />
                 <div>
-                  <p className="text-xs text-gray-500 mb-0.5">{evt.date}</p>
-                  <p className="text-sm text-gray-200">{evt.event}</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: agent?.color }}>{agent?.name}</p>
+                  <p className="text-[10px] text-gray-500 mb-0.5">
+                    {new Date(evt.time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <p className="text-sm text-gray-200">{evt.text}</p>
+                  {evt.taskTitle && <p className="text-[10px] text-gray-600 mt-0.5">{evt.taskTitle}</p>}
+                  <p className="text-[10px] mt-0.5" style={{ color: a?.color }}>{a?.name}</p>
                 </div>
               </div>
             )
@@ -243,11 +289,13 @@ function ProposalPreview({ proposal, onClose }) {
 
 export default function Operations() {
   const { state } = useApp()
-  const [selected, setSelected] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
   const [showTermSheet, setShowTermSheet] = useState(false)
   const [termSheetOp, setTermSheetOp] = useState('')
   const [activeTab, setActiveTab] = useState('operations')
   const [previewProposal, setPreviewProposal] = useState(null)
+
+  const selected = selectedId ? state.operations.find(o => o.id === selectedId) : null
 
   const openTermSheet = (e, opName = '') => {
     e.stopPropagation()
@@ -258,7 +306,7 @@ export default function Operations() {
   if (selected) {
     return (
       <>
-        <OperationDetail operation={selected} onBack={() => setSelected(null)} onTermSheet={openTermSheet} />
+        <OperationDetail operation={selected} onBack={() => setSelectedId(null)} onTermSheet={openTermSheet} />
         {showTermSheet && <TermSheetModal onClose={() => setShowTermSheet(false)} operationName={termSheetOp} />}
       </>
     )
@@ -342,19 +390,21 @@ export default function Operations() {
           </div>
         )}
         {state.operations.map(op => {
-          const lead = AGENTS.find(a => a.id === (op.leadAgent || 'md_orchestrator'))
           return (
             <div
               key={op.id}
-              onClick={() => setSelected(op)}
-              className="card-hover p-5 cursor-pointer flex items-center gap-5"
+              onClick={() => setSelectedId(op.id)}
+              className={`card-hover p-5 cursor-pointer flex items-center gap-5 ${op.paused ? 'opacity-60' : ''}`}
             >
               <div className="flex-shrink-0 w-14 text-center">
                 <span className={`badge ${op.type === 'DCM' ? 'badge-blue' : 'badge-green'}`}>{op.type}</span>
                 <p className="text-[10px] text-gray-500 mt-1">{op.instrument}</p>
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-white">{op.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">{op.name}</h3>
+                  {op.paused && <span className="badge badge-red text-[9px]">Pausada</span>}
+                </div>
                 <p className="text-xs text-gray-400 mt-0.5">{op.company} · {op.sector}</p>
               </div>
               <div className="text-right flex-shrink-0">

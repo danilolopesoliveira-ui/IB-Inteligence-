@@ -634,8 +634,12 @@ async def run_agent_task(payload: dict):
         file_context = payload.get("file_context", "")
         task_title = payload.get("task_title", "")
         additional_context = payload.get("additional_context", "")
+        custom_prompt = payload.get("custom_prompt", "").strip()
 
-        base_prompt = AGENT_PROMPTS.get(agent_id, MD_SYSTEM_PROMPT)
+        if custom_prompt:
+            base_prompt = custom_prompt
+        else:
+            base_prompt = AGENT_PROMPTS.get(agent_id, MD_SYSTEM_PROMPT)
 
         op_summary = f"""
 OPERACAO SENDO ANALISADA:

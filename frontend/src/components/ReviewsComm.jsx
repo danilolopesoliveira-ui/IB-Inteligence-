@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../data/mockData'
-import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X } from 'lucide-react'
+import { Send, MessageCircle, AlertTriangle, RotateCcw, CheckCircle, Search, Plus, X, Loader } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -12,14 +12,30 @@ const TYPE_ICONS = {
   resposta: { icon: CheckCircle, label: 'Resposta', cls: 'text-accent-green' },
 }
 
+// Pipeline advancement logic — mirrors the project pipeline stages
+const PIPELINE_NEXT = {
+  accountant: { nexts: ['research'],           requires: ['accountant', 'legal'] },
+  legal:      { nexts: ['research'],           requires: ['accountant', 'legal'] },
+  research:   { nexts: ['modeling'],           requires: ['research'] },
+  modeling:   { nexts: ['specialist', 'risk'], requires: ['modeling'] },
+  specialist: { nexts: ['deck'],               requires: ['specialist', 'risk'] },
+  risk:       { nexts: ['deck'],               requires: ['specialist', 'risk'] },
+  deck:       { nexts: [],                     requires: [] },
+}
+
+function getTaskSuffix(taskId) {
+  const parts = taskId.split('_')
+  return parts[parts.length - 1]
+}
+
 function Thread({ thread }) {
-  const { dispatch, toast } = useApp()
+  const { state: appState, dispatch, toast } = useApp()
   const [reply, setReply] = useState('')
   const [loading, setLoading] = useState(false)
+  const [approving, setApproving] = useState(false)
   const messagesEndRef = useRef(null)
 
   const agent = AGENTS.find(a => a.id === thread.agent)
-  const { state: appState } = useApp()
   const op = appState.operations.find(o => o.id === thread.operation)
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -79,6 +95,115 @@ function Thread({ thread }) {
     }
   }
 
+  const approveStage = async () => {
+    setApproving(true)
+    try {
+      const now = new Date().toISOString()
+      const taskIds = thread.approvalTaskIds || []
+      if (taskIds.length === 0) return
+
+      const opId = thread.operation
+      const opTasks = appState.tasks.filter(t => t.operation === opId)
+
+      // Mark all awaiting tasks as Concluido
+      for (const taskId of taskIds) {
+        const task = appState.tasks.find(t => t.id === taskId)
+        dispatch({ type: 'APPEND_TASK_LOG', payload: {
+          taskId,
+          column: 'Concluido',
+          entries: [{ time: now, agent: 'md_orchestrator', type: 'approve', text: `Aprovado pelo usuario: ${task?.title || taskId}` }],
+        }})
+      }
+
+      // Clear approval state immediately
+      dispatch({ type: 'SET_THREAD_APPROVAL', payload: {
+        threadId: thread.id,
+        awaitingApproval: false,
+        approvalTaskIds: [],
+      }})
+      toast('Etapa aprovada!', 'success')
+
+      // Fetch file context once
+      let fileContext = ''
+      if (op?.company) {
+        try {
+          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
+          const d = await r.json()
+          fileContext = d.context || ''
+        } catch {}
+      }
+
+      // Determine next tasks — deduplicate by suffix
+      const startedSuffixes = new Set()
+      const newTaskIds = []
+
+      for (const taskId of taskIds) {
+        const suffix = getTaskSuffix(taskId)
+        const pipelineInfo = PIPELINE_NEXT[suffix]
+        if (!pipelineInfo || pipelineInfo.nexts.length === 0) continue
+
+        for (const nextSuffix of pipelineInfo.nexts) {
+          if (startedSuffixes.has(nextSuffix)) continue
+          startedSuffixes.add(nextSuffix)
+
+          const nextTask = opTasks.find(t => getTaskSuffix(t.id) === nextSuffix)
+          if (!nextTask || nextTask.column !== 'Backlog') continue
+
+          try {
+            const agentConfig = appState.agents.find(a => a.id === nextTask.agent)
+            const r = await fetch(`${API}/api/run-agent-task`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                agent_id: nextTask.agent,
+                operation: op || { id: opId },
+                file_context: fileContext,
+                task_title: nextTask.title,
+                custom_prompt: agentConfig?.promptBase || '',
+              }),
+            })
+            const data = await r.json()
+            if (data.text) {
+              const t2 = new Date().toISOString()
+              dispatch({ type: 'APPEND_TASK_LOG', payload: {
+                taskId: nextTask.id,
+                column: 'Em Revisao',
+                entries: [
+                  { time: t2, agent: nextTask.agent, type: 'start', text: `Iniciado apos aprovacao: ${nextTask.title}` },
+                  { time: t2, agent: nextTask.agent, type: 'progress', text: data.text },
+                ],
+              }})
+              dispatch({ type: 'ADD_AGENT_RESPONSE', payload: {
+                threadId: thread.id,
+                agentId: nextTask.agent,
+                text: data.text,
+              }})
+              newTaskIds.push(nextTask.id)
+            }
+          } catch (err) {
+            console.error(`[${nextTask.agent}] Erro:`, err)
+            toast(`Erro ao executar ${nextSuffix}: ${err.message}`, 'error')
+          }
+        }
+      }
+
+      if (newTaskIds.length > 0) {
+        dispatch({ type: 'SET_THREAD_APPROVAL', payload: {
+          threadId: thread.id,
+          awaitingApproval: true,
+          approvalTaskIds: newTaskIds,
+        }})
+        toast('Proxima etapa acionada — aguardando aprovacao!', 'success')
+      } else {
+        toast('Pipeline concluido!', 'success')
+      }
+    } catch (err) {
+      toast(`Erro: ${err.message}`, 'error')
+    } finally {
+      setApproving(false)
+    }
+  }
+
   const urgencyColors = { alta: 'badge-red', media: 'badge-gold', baixa: 'badge-green' }
 
   return (
@@ -135,6 +260,30 @@ function Thread({ thread }) {
           </div>
         </div>
       )}
+      {/* Approval banner */}
+      {thread.awaitingApproval && (
+        op?.paused ? (
+          <div className="flex items-center gap-2 px-4 py-3 mb-3 rounded-lg border border-amber-400/30 bg-amber-400/5">
+            <span className="text-[11px] text-amber-300">Operacao pausada — aprovacao suspensa. Reative a operacao em Operacoes para continuar o pipeline.</span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 mb-3 rounded-lg border border-accent-green/40 bg-accent-green/10">
+            <div>
+              <p className="text-xs font-semibold text-accent-green">Etapa concluida pelo MD — aguardando sua aprovacao</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{thread.approvalTaskIds?.length || 0} tarefa(s) prontas para avancar o pipeline</p>
+            </div>
+            <button
+              onClick={approveStage}
+              disabled={approving}
+              className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-accent-green text-accent-green hover:bg-accent-green/20 text-xs whitespace-nowrap"
+            >
+              {approving ? <Loader size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+              {approving ? 'Aprovando...' : 'Aprovar e Avancar'}
+            </button>
+          </div>
+        )
+      )}
+
       {/* Input */}
       <div className="flex items-center gap-2 pt-3 border-t border-surface-200">
         <input
@@ -143,9 +292,9 @@ function Thread({ thread }) {
           value={reply}
           onChange={e => setReply(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
-          disabled={loading}
+          disabled={loading || approving}
         />
-        <button onClick={send} className="btn-primary p-2" disabled={loading}><Send size={16} /></button>
+        <button onClick={send} className="btn-primary p-2" disabled={loading || approving}><Send size={16} /></button>
       </div>
     </div>
   )
@@ -313,6 +462,7 @@ export default function ReviewsComm() {
                     <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white" style={{ background: agent?.color }}>{agent?.avatar}</div>
                     <span className="text-xs font-medium text-gray-300 truncate flex-1">{agent?.name?.split(' ')[0]}</span>
                     {m.unread > 0 && <span className="w-2 h-2 bg-gold rounded-full" />}
+                    {m.awaitingApproval && <span className="text-[9px] font-bold text-accent-green border border-accent-green/40 rounded px-1 py-0.5">APROVAR</span>}
                     <span className={`${typeInfo?.cls} text-[10px]`}>{typeInfo?.label}</span>
                   </div>
                   <p className="text-[11px] text-gray-400 line-clamp-2">{m.subject}</p>

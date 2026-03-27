@@ -105,14 +105,25 @@ function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
     const doc = DOC_CHECKLIST[idx]
     if (!file || !doc) return
     const currentFiles = uploadedDocs[idx]?.files || []
-    if (currentFiles.length >= doc.maxFiles) return
-    const company = form.company || 'empresa'
+    if (currentFiles.length >= doc.maxFiles) {
+      toast(`Limite de ${doc.maxFiles} arquivos atingido`, 'error')
+      return
+    }
+    if (!form.company.trim()) {
+      toast('Preencha o nome da empresa antes de fazer upload', 'error')
+      return
+    }
+    const company = form.company.trim()
     setUploading(idx)
     try {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('company', company)
       const res = await fetch(`${API}/api/upload`, { method: 'POST', body: fd })
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`Servidor retornou ${res.status}: ${err}`)
+      }
       const data = await res.json()
       if (data.ok) {
         setUploadedDocs(prev => ({
@@ -120,9 +131,11 @@ function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
           [idx]: { ...doc, files: [...(prev[idx]?.files || []), { name: data.file, size_kb: data.size_kb }] }
         }))
         toast(`${doc.label} — arquivo salvo`, 'success')
+      } else {
+        toast(`Erro ao salvar arquivo: ${data.error || 'resposta inesperada'}`, 'error')
       }
-    } catch {
-      toast('Erro ao fazer upload', 'error')
+    } catch (err) {
+      toast(`Erro no upload: ${err.message}`, 'error')
     } finally {
       setUploading(null)
       if (fileRefs.current[idx]) fileRefs.current[idx].value = ''
@@ -131,9 +144,15 @@ function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
 
   return (
     <div className="space-y-2">
+      {!form.company.trim() && (
+        <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg border border-amber-400/30 bg-amber-400/5">
+          <AlertTriangle size={13} className="text-amber-400 flex-shrink-0" />
+          <p className="text-xs text-amber-300">Volte ao passo 1 e informe o nome da empresa antes de fazer upload.</p>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-gray-400">
-          Ate <span className="text-gold">5 arquivos</span> por item · Pendentes nao bloqueiam o fluxo
+          Ate <span className="text-gold">5 arquivos</span> por item · Clique na linha ou em "Anexar" · Pendentes nao bloqueiam o fluxo
         </p>
         {form.company && (
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-surface-100 px-2.5 py-1 rounded-lg">
@@ -147,33 +166,46 @@ function StepChecklist({ form, uploadedDocs, setUploadedDocs }) {
         const atLimit = files.length >= doc.maxFiles
         const hasFiles = files.length > 0
         return (
-          <div key={doc.id} className="card-hover p-3">
+          <div key={doc.id} className={`card p-3 transition-colors ${!atLimit && uploading === null ? 'hover:border-gold/30 cursor-pointer' : ''}`}
+          onClick={() => !atLimit && uploading === null && fileRefs.current[idx]?.click()}
+        >
             <div className="flex items-center gap-3">
-              {hasFiles
-                ? <CheckCircle size={18} className="text-accent-green flex-shrink-0" />
-                : <Clock size={18} className={`flex-shrink-0 ${doc.required ? 'text-gold' : 'text-gray-500'}`} />
+              {uploading === idx
+                ? <Upload size={18} className="text-gold animate-bounce flex-shrink-0" />
+                : hasFiles
+                  ? <CheckCircle size={18} className="text-accent-green flex-shrink-0" />
+                  : <Clock size={18} className={`flex-shrink-0 ${doc.required ? 'text-gold' : 'text-gray-500'}`} />
               }
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-200">{doc.label}</span>
                   {!doc.required && <span className="text-[9px] text-gray-500 bg-surface-200 px-1.5 py-0.5 rounded">Opcional</span>}
-                  {doc.hint && doc.required && <span className="text-[9px] text-gray-500">{doc.hint}</span>}
                 </div>
+                {!atLimit && uploading !== idx && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {uploading === idx ? 'Enviando...' : 'Clique para selecionar arquivo'}
+                  </p>
+                )}
               </div>
               <span className="text-[10px] text-gray-500 font-medium">{files.length}/{doc.maxFiles}</span>
               <input
                 type="file"
                 ref={el => fileRefs.current[idx] = el}
                 className="hidden"
-                onChange={e => handleUpload(idx, e.target.files[0])}
+                accept=".pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg"
+                onChange={e => { e.stopPropagation(); handleUpload(idx, e.target.files[0]) }}
               />
               <button
-                className={`btn-ghost p-1 flex items-center gap-1 text-[10px] ${uploading === idx ? 'animate-pulse text-gold' : atLimit ? 'opacity-30 cursor-not-allowed' : ''}`}
-                title={atLimit ? 'Limite de 5 arquivos atingido' : 'Adicionar arquivo'}
-                onClick={() => !atLimit && fileRefs.current[idx]?.click()}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] border transition-colors flex-shrink-0 ${
+                  uploading === idx ? 'border-gold/40 text-gold animate-pulse' :
+                  atLimit ? 'border-surface-200 text-gray-600 cursor-not-allowed opacity-40' :
+                  'border-gold/40 text-gold hover:bg-gold/10'
+                }`}
+                title={atLimit ? `Limite de ${doc.maxFiles} arquivos atingido` : 'Enviar arquivo'}
+                onClick={e => { e.stopPropagation(); !atLimit && uploading === null && fileRefs.current[idx]?.click() }}
                 disabled={uploading !== null || atLimit}
               >
-                <Plus size={13} /><Upload size={13} />
+                {uploading === idx ? <><Upload size={11} /> Enviando...</> : <><Plus size={11} /> Anexar</>}
               </button>
             </div>
             {hasFiles && (
@@ -359,7 +391,7 @@ function PendingPanel() {
 const EMPTY_FORM = { company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantees: [], agents: ['md_orchestrator'], priority: 'Alta', notes: '', selectedDocs: [], additionalRequest: '' }
 
 export default function ProjectOpening() {
-  const { dispatch, toast } = useApp()
+  const { dispatch, toast, state } = useApp()
   const [step, setStep] = useState(0)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [uploadedDocs, setUploadedDocs] = useState({})
@@ -403,6 +435,7 @@ export default function ProjectOpening() {
 
     for (const task of etapa1) {
       try {
+        const agentConfig = state.agents.find(a => a.id === task.agentId)
         const r = await fetch(`${API}/api/run-agent-task`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -412,6 +445,7 @@ export default function ProjectOpening() {
             file_context: fileContext,
             task_title: task.title,
             additional_context: capturedForm.additionalRequest,
+            custom_prompt: agentConfig?.promptBase || '',
           }),
         })
         const data = await r.json()
@@ -435,7 +469,12 @@ export default function ProjectOpening() {
         console.error(`[${task.agentId}] Erro na execucao automatica:`, err)
       }
     }
-    toast('Etapa 1 concluida — aguardando revisao do MD', 'success')
+    dispatch({ type: 'SET_THREAD_APPROVAL', payload: {
+      threadId: `msg_${opId}`,
+      awaitingApproval: true,
+      approvalTaskIds: etapa1.map(t => t.taskId),
+    }})
+    toast('Etapa 1 concluida — aguardando sua aprovacao em Revisoes & Comunicacao', 'success')
   }
 
   return (
