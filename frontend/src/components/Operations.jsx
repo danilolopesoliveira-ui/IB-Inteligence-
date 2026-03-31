@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, BRL_COMPACT, DOC_CHECKLIST } from '../data/mockData'
-import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info } from 'lucide-react'
+import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info, MessageSquare, ToggleLeft, ToggleRight, Ban } from 'lucide-react'
 import TermSheetModal from './TermSheetModal'
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -19,12 +19,13 @@ const EXPECTED_AGENT_DOCS = [
 ]
 
 const STATUS_CONFIG = {
-  analisado: { label: 'Analisado', cls: 'badge-green', icon: CheckCircle },
-  em_analise: { label: 'Em Analise', cls: 'badge-gold', icon: Loader },
-  pendente: { label: 'Pendente', cls: 'badge-red', icon: AlertCircle },
-  rascunho: { label: 'Rascunho', cls: 'bg-surface-200 text-gray-400 badge', icon: FileText },
-  em_revisao: { label: 'Em Revisao', cls: 'badge-gold', icon: Loader },
-  aprovado: { label: 'Aprovado', cls: 'badge-green', icon: CheckCircle },
+  analisado:  { label: 'Analisado',    cls: 'badge-green', icon: CheckCircle },
+  em_analise: { label: 'Em Analise',   cls: 'badge-gold',  icon: Loader },
+  pendente:   { label: 'Pendente',     cls: 'badge-red',   icon: AlertCircle },
+  rascunho:   { label: 'Rascunho',     cls: 'bg-surface-200 text-gray-400 badge', icon: FileText },
+  em_revisao: { label: 'Em Revisao',   cls: 'badge-gold',  icon: Loader },
+  aprovado:   { label: 'Aprovado',     cls: 'badge-green', icon: CheckCircle },
+  desligado:  { label: 'Nao Aplicavel',cls: 'bg-surface-200 text-gray-500 badge', icon: Ban },
 }
 
 function UnavailableDocModal({ doc, onClose }) {
@@ -50,17 +51,17 @@ function UnavailableDocModal({ doc, onClose }) {
 function OperationDetail({ operation, onBack, onTermSheet }) {
   const [tab, setTab] = useState('client')
   const { state, dispatch, toast } = useApp()
-  const fileInputRef = useRef(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploadingDocId, setUploadingDocId] = useState(null)
   const [unavailableDoc, setUnavailableDoc] = useState(null)
+  const docFileRefs = useRef({})
 
   // Always read operation from live state (avoids stale snapshot)
   const op = state.operations.find(o => o.id === operation.id) || operation
 
-  const handleClientUpload = async (e) => {
+  const handleDocUpload = async (e, doc) => {
     const file = e.target.files[0]
     if (!file) return
-    setUploading(true)
+    setUploadingDocId(doc.id)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -68,20 +69,18 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
       const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData })
       const data = await res.json()
       if (!data.ok) throw new Error('Falha no upload')
-      dispatch({ type: 'ADD_CLIENT_DOC', payload: {
+      const newFile = { name: data.file, size_kb: data.size_kb }
+      const updatedFiles = [...(doc.files || []), newFile]
+      dispatch({ type: 'UPDATE_CLIENT_DOC', payload: {
         opId: op.id,
-        doc: {
-          name: data.file,
-          type: file.name.split('.').pop().toUpperCase(),
-          date: new Date().toLocaleDateString('pt-BR'),
-          status: 'em_analise',
-        }
+        docId: doc.id,
+        updates: { files: updatedFiles, status: 'em_analise', date: new Date().toLocaleDateString('pt-BR') },
       }})
-      toast(`Documento "${data.file}" enviado com sucesso`, 'success')
+      toast(`"${data.file}" enviado`, 'success')
     } catch (err) {
       toast(`Erro no upload: ${err.message}`, 'error')
     } finally {
-      setUploading(false)
+      setUploadingDocId(null)
       e.target.value = ''
     }
   }
@@ -191,34 +190,62 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
       {unavailableDoc && <UnavailableDocModal doc={unavailableDoc} onClose={() => setUnavailableDoc(null)} />}
 
       {tab === 'client' && (
-        <div>
-          <div className="flex justify-end mb-3">
-            <input ref={fileInputRef} type="file" className="hidden" onChange={handleClientUpload} />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="btn-ghost flex items-center gap-1.5 text-xs border border-surface-200 hover:border-gold hover:text-gold"
-            >
-              {uploading ? <Loader size={13} className="animate-spin" /> : <Upload size={13} />}
-              {uploading ? 'Enviando...' : 'Enviar Documento'}
-            </button>
-          </div>
-          <div className="space-y-2">
+        <div className="space-y-2">
+          {/* Se a op tem clientDocs estruturado (novo formato) — mostra todos com toggle e upload */}
           {op.clientDocs
-            ? op.clientDocs.map((doc, i) => {
+            ? op.clientDocs.map((doc) => {
                 const st = STATUS_CONFIG[doc.status] || STATUS_CONFIG.pendente
+                const isDisabled = !doc.enabled
+                const isUploading = uploadingDocId === doc.id
                 return (
-                  <div key={i} className="card-hover p-4 flex items-center gap-4">
-                    <FileText size={18} className="text-gray-500 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-200">{doc.name}</p>
-                      <p className="text-[10px] text-gray-500">{doc.type} · {doc.date || 'Nao recebido'}</p>
+                  <div key={doc.id} className={`card p-3 transition-colors ${isDisabled ? 'opacity-50' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      {isDisabled
+                        ? <Ban size={16} className="text-gray-600 flex-shrink-0" />
+                        : (doc.files?.length > 0
+                            ? <CheckCircle size={16} className="text-accent-green flex-shrink-0" />
+                            : <Clock size={16} className={`flex-shrink-0 ${doc.required ? 'text-gold' : 'text-gray-500'}`} />)
+                      }
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm ${isDisabled ? 'line-through text-gray-500' : 'text-gray-200'}`}>{doc.label}</p>
+                        {doc.files?.length > 0 && !isDisabled && (
+                          <p className="text-[10px] text-gray-500 mt-0.5">{doc.files.map(f => f.name || f).join(', ')}</p>
+                        )}
+                      </div>
+                      <span className={st.cls}>{st.label}</span>
+                      {/* Upload por doc — só aparece quando ligado */}
+                      {!isDisabled && (
+                        <>
+                          <input
+                            type="file"
+                            ref={el => docFileRefs.current[doc.id] = el}
+                            className="hidden"
+                            accept=".pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg"
+                            onChange={e => handleDocUpload(e, doc)}
+                          />
+                          <button
+                            onClick={() => docFileRefs.current[doc.id]?.click()}
+                            disabled={isUploading}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] border border-gold/30 text-gold hover:bg-gold/10 transition-colors flex-shrink-0"
+                          >
+                            {isUploading ? <Loader size={11} className="animate-spin" /> : <Upload size={11} />}
+                            {isUploading ? 'Enviando...' : 'Upload'}
+                          </button>
+                        </>
+                      )}
+                      {/* Toggle ligado/desligado */}
+                      <button
+                        onClick={() => dispatch({ type: 'TOGGLE_CLIENT_DOC', payload: { opId: op.id, docId: doc.id } })}
+                        title={isDisabled ? 'Ativar documento' : 'Marcar como não aplicável'}
+                        className={`p-1 rounded transition-colors flex-shrink-0 ${isDisabled ? 'text-accent-green hover:bg-accent-green/10' : 'text-gray-500 hover:text-accent-red hover:bg-accent-red/10'}`}
+                      >
+                        {isDisabled ? <ToggleLeft size={18} /> : <ToggleRight size={18} />}
+                      </button>
                     </div>
-                    <span className={st.cls}>{st.label}</span>
-                    {doc.status !== 'pendente' && <button className="btn-ghost p-1"><Eye size={14} /></button>}
                   </div>
                 )
               })
+            /* Fallback para ops antigas sem clientDocs */
             : DOC_CHECKLIST.map(doc => {
                 const isPending = op.pendingDocs?.includes(doc.label)
                 const st = isPending ? STATUS_CONFIG.pendente : STATUS_CONFIG.analisado
@@ -234,12 +261,10 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                 )
               })
           }
-          </div>
         </div>
       )}
 
       {tab === 'agent' && (() => {
-        // Filtra docs esperados conforme tipo da operação (DCM ou ECM)
         const isECM = op.type === 'ECM'
         const expectedDocs = EXPECTED_AGENT_DOCS.filter(d =>
           isECM ? d.agent !== 'dcm_specialist' : d.agent !== 'ecm_specialist'
@@ -263,11 +288,22 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                       </div>
                     </div>
                     <span className={st.cls}>{st.label}</span>
+                    {/* Botão Revisões — abre chat com MD + agente específico */}
+                    <button
+                      onClick={() => dispatch({ type: 'OPEN_AGENT_CHAT', payload: {
+                        agentId: generated.agent,
+                        taskId: null,
+                        operationId: op.id,
+                        subject: `Revisão: ${generated.name || expected.name}`,
+                      }})}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] border border-surface-200 text-gray-400 hover:border-gold hover:text-gold transition-colors flex-shrink-0"
+                    >
+                      <MessageSquare size={11} /> Revisões
+                    </button>
                     <button className="btn-ghost p-1"><Download size={14} /></button>
                   </div>
                 )
               }
-              // Documento ainda não gerado — clicável para ver motivo
               return (
                 <div
                   key={i}
@@ -282,7 +318,7 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                       <span className="text-[10px] text-gray-600">· {expected.stage}</span>
                     </div>
                   </div>
-                  <span className="bg-surface-200 text-gray-500 badge text-[10px]">Não Disponível</span>
+                  <span className="bg-surface-200 text-gray-500 badge text-[10px]">Nao Disponivel</span>
                   <Info size={14} className="text-gray-600 flex-shrink-0" />
                 </div>
               )

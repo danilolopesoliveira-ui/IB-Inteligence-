@@ -483,6 +483,21 @@ export default function ProjectOpening() {
             agentId: task.agentId,
             text: data.text,
           }})
+          // Registra documento gerado em Documentos Gerados da operação
+          const docNames = {
+            accountant:   'Análise Contábil e Ajustes (IFRS 16)',
+            legal_advisor:'Due Diligence Jurídica',
+          }
+          dispatch({ type: 'ADD_AGENT_DOC', payload: {
+            opId,
+            doc: {
+              name: docNames[task.agentId] || task.title,
+              agent: task.agentId,
+              status: 'em_revisao',
+              version: 'v1.0',
+              date: new Date().toLocaleDateString('pt-BR'),
+            }
+          }})
         }
       } catch (err) {
         console.error(`[${task.agentId}] Erro na execucao automatica:`, err)

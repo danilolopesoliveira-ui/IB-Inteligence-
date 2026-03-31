@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
-import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIONS } from '../data/mockData'
+import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIONS, DOC_CHECKLIST } from '../data/mockData'
 
 const AppContext = createContext(null)
 
@@ -207,6 +207,22 @@ function reducer(state, action) {
         ? `Documentos pendentes: ${pendingDocs.join(', ')}. Os agentes prosseguem com o disponivel e solicitarao os itens faltantes conforme necessario.`
         : 'Documentacao completa recebida.'
 
+      // Constroi clientDocs com TODOS os itens do checklist (ligados e desligados)
+      const clientDocs = DOC_CHECKLIST.map((doc, idx) => {
+        const submitted = docs[idx] || {}
+        const isDisabled = submitted.disabled === true
+        const hasFiles = (submitted.files || []).length > 0
+        return {
+          id: doc.id,
+          label: doc.label,
+          required: doc.required,
+          enabled: !isDisabled,
+          status: isDisabled ? 'desligado' : (hasFiles ? 'em_analise' : 'pendente'),
+          files: submitted.files || [],
+          date: hasFiles ? new Date().toLocaleDateString('pt-BR') : null,
+        }
+      })
+
       const newOp = {
         id: opId,
         name: `${form.company} — ${form.opType}`,
@@ -228,6 +244,7 @@ function reducer(state, action) {
         additionalRequest: form.additionalRequest || '',
         openedAt: now,
         pendingDocs,
+        clientDocs,
       }
 
       const mk = (id, title, agent, column, difficulty, maxHours, logText) => ({
@@ -310,6 +327,34 @@ function reducer(state, action) {
         if (o.id !== action.payload.opId) return o
         const clientDocs = [...(o.clientDocs || []), action.payload.doc]
         return { ...o, clientDocs }
+      })
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      return { ...state, operations }
+    }
+    case 'TOGGLE_CLIENT_DOC': {
+      // payload: { opId, docId }
+      const operations = state.operations.map(o => {
+        if (o.id !== action.payload.opId) return o
+        const clientDocs = (o.clientDocs || []).map(doc => {
+          if (doc.id !== action.payload.docId) return doc
+          const nowEnabled = !doc.enabled
+          return { ...doc, enabled: nowEnabled, status: nowEnabled ? 'pendente' : 'desligado' }
+        })
+        const pendingDocs = clientDocs.filter(d => d.required && d.enabled && (!d.files || d.files.length === 0)).map(d => d.label)
+        return { ...o, clientDocs, pendingDocs }
+      })
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      return { ...state, operations }
+    }
+    case 'UPDATE_CLIENT_DOC': {
+      // payload: { opId, docId, updates: { files, status, date } }
+      const operations = state.operations.map(o => {
+        if (o.id !== action.payload.opId) return o
+        const clientDocs = (o.clientDocs || []).map(doc =>
+          doc.id === action.payload.docId ? { ...doc, ...action.payload.updates } : doc
+        )
+        const pendingDocs = clientDocs.filter(d => d.required && d.enabled && (!d.files || d.files.length === 0)).map(d => d.label)
+        return { ...o, clientDocs, pendingDocs }
       })
       try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
       return { ...state, operations }
