@@ -655,6 +655,9 @@ Análise quantitativa objetiva com: metodologia explícita, premissas documentad
 @app.post("/api/run-agent-task")
 async def run_agent_task(payload: dict):
     """Executa um agente especifico em uma tarefa de pipeline."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY nao configurada no servidor")
     try:
         agent_id = payload.get("agent_id", "")
         operation = payload.get("operation", {})
@@ -697,6 +700,8 @@ OPERACAO SENDO ANALISADA:
             messages=[{"role": "user", "content": f"Execute sua tarefa: {task_title}"}],
         )
         return {"text": response.content[0].text, "agent_id": agent_id}
+    except _anthropic.APIStatusError as e:
+        raise HTTPException(status_code=e.status_code, detail=f"Anthropic API error: {e.message}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -866,19 +871,24 @@ Apresente ao MD uma revisão estruturada:
 @app.post("/api/chat")
 async def chat_with_md(payload: dict):
     """Chat com MD Orchestrator via Claude API."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY nao configurada no servidor")
     try:
-        client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        client = _anthropic.Anthropic(api_key=api_key)
         history = payload.get("messages", [])
         base_prompt = payload.get("system_prompt") or MD_SYSTEM_PROMPT
         ops_context = payload.get("operations_context", "")
         system = base_prompt + (ops_context if ops_context else "") + CHAT_FORMAT_RULES
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1024,
+            max_tokens=2048,
             system=system,
             messages=history,
         )
         return {"text": response.content[0].text}
+    except _anthropic.APIStatusError as e:
+        raise HTTPException(status_code=e.status_code, detail=f"Anthropic API error: {e.message}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

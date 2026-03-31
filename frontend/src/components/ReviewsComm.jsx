@@ -169,8 +169,9 @@ function Thread({ thread }) {
           operations_context: op ? `\n\nOperacao: ${op.name} | Tipo: ${op.type} | Instrumento: ${op.instrument} | Etapa: ${op.stage || 'Etapa 1'}${op.pendingDocs?.length > 0 ? ` | Docs pendentes: ${op.pendingDocs.join(', ')}` : ''}` : '',
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
+      let data
+      try { data = await res.json() } catch { throw new Error(`Servidor indisponivel (HTTP ${res.status}) — tente novamente em alguns segundos`) }
+      if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
       if (!data.text) throw new Error('Resposta vazia do servidor')
       dispatch({ type: 'ADD_AGENT_RESPONSE', payload: { threadId: thread.id, agentId: thread.agent, text: data.text } })
     } catch (err) {

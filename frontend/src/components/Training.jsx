@@ -108,8 +108,9 @@ function MDChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history, operations_context: opsContext + filesContext }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
+      let data
+      try { data = await res.json() } catch { throw new Error(`Servidor indisponivel (HTTP ${res.status}) — tente novamente em alguns segundos`) }
+      if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
       if (!data.text) throw new Error('Resposta vazia do servidor')
       setMessages(prev => [...prev, {
         from: 'md_orchestrator',

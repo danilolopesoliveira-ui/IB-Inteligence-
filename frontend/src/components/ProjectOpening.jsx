@@ -467,7 +467,8 @@ export default function ProjectOpening() {
             custom_prompt: agentConfig?.promptBase || '',
           }),
         })
-        const data = await r.json()
+        let data
+        try { data = await r.json() } catch { throw new Error(`Servidor indisponivel (HTTP ${r.status})`) }
         if (data.text) {
           const now = new Date().toISOString()
           dispatch({ type: 'APPEND_TASK_LOG', payload: {
