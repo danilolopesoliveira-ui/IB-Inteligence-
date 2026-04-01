@@ -16,6 +16,13 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from cost_tracker import tracker
+from database import (
+    init_db, get_full_state,
+    save_operation, get_operation, list_operations, update_operation,
+    save_task, get_task, list_tasks, update_task, recover_interrupted_tasks,
+    save_agent_doc, list_agent_docs, update_agent_doc,
+    get_agent_timing_stats,
+)
 
 TEMPLATES_DIR = Path("./templates/models")
 UPLOADS_DIR   = Path("./uploads")
@@ -29,6 +36,23 @@ def _slug(name: str) -> str:
     s = re.sub(r"[^\w\s-]", "", s)
     s = re.sub(r"[\s_-]+", "_", s)
     return s[:60] or "empresa"
+
+
+def _get_file_context(company: str, max_chars: int = 15000) -> str:
+    """Busca e retorna o texto extraido de todos os documentos da empresa.
+    Usado server-side para garantir que agentes sempre recebam os docs."""
+    if not company:
+        return ""
+    slug = _slug(company)
+    folder = UPLOADS_DIR / slug
+    if not folder.exists():
+        return ""
+    results = []
+    for f in sorted(folder.iterdir()):
+        if f.is_file():
+            content = _extract_file_text(f)
+            results.append(f"=== {f.name} ===\n{content}")
+    return "\n\n".join(results)[:max_chars]
 
 
 def _find_template(filename: str) -> Path | None:
@@ -49,6 +73,122 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Startup: init DB + recover interrupted tasks ────────────────────────────
+
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    interrupted = recover_interrupted_tasks()
+    for t in interrupted:
+        print(f"[Recovery] Re-queued interrupted task: {t['id']} (attempt {t.get('attempt_count', '?')})")
+
+
+# ── Persistence API: operations, tasks, agent_docs ───────────────────────────
+
+AGENT_DOC_NAMES = {
+    "accountant":        "Análise Contábil e Ajustes (IFRS 16)",
+    "legal_advisor":     "Due Diligence Jurídica",
+    "research_analyst":  "Dossiê Analítico (Research Report)",
+    "financial_modeler": "Modelo Financeiro e Projeções",
+    "dcm_specialist":    "Relatório de Viabilidade DCM",
+    "ecm_specialist":    "Relatório de Viabilidade ECM",
+    "risk_compliance":   "Relatório de Risco e Compliance",
+    "deck_builder":      "Book de Crédito / CIM e Teaser",
+}
+
+
+@app.get("/api/state")
+def get_state():
+    """Bulk state for frontend hydration — operations + tasks + agent docs."""
+    return get_full_state()
+
+
+@app.get("/api/operations")
+def api_list_operations():
+    return list_operations()
+
+
+@app.get("/api/operations/{op_id}")
+def api_get_operation(op_id: str):
+    op = get_operation(op_id)
+    if not op:
+        raise HTTPException(status_code=404, detail="Operation not found")
+    op["agentDocs"] = list_agent_docs(op_id)
+    op["tasks"] = list_tasks(operation_id=op_id)
+    return op
+
+
+@app.post("/api/operations")
+def api_save_operation(payload: dict):
+    save_operation(payload)
+    return {"ok": True, "id": payload.get("id")}
+
+
+@app.put("/api/operations/{op_id}")
+def api_update_operation(op_id: str, payload: dict):
+    update_operation(op_id, payload)
+    return {"ok": True}
+
+
+@app.get("/api/tasks")
+def api_list_tasks(operation_id: str = None, status: str = None):
+    return list_tasks(operation_id=operation_id, status=status)
+
+
+@app.get("/api/tasks/{task_id}")
+def api_get_task(task_id: str):
+    t = get_task(task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return t
+
+
+@app.post("/api/tasks")
+def api_save_task(payload: dict):
+    save_task(payload)
+    return {"ok": True, "id": payload.get("id")}
+
+
+@app.put("/api/tasks/{task_id}")
+def api_update_task(task_id: str, payload: dict):
+    update_task(task_id, payload)
+    return {"ok": True}
+
+
+@app.post("/api/tasks/{task_id}/requeue")
+def api_requeue_task(task_id: str):
+    t = get_task(task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    update_task(task_id, {"status": "queued", "error_message": None})
+    return {"ok": True, "status": "queued"}
+
+
+@app.get("/api/agent-docs/{op_id}")
+def api_list_agent_docs(op_id: str):
+    return list_agent_docs(op_id)
+
+
+@app.post("/api/agent-docs")
+def api_save_agent_doc(payload: dict):
+    doc_id = save_agent_doc(payload)
+    return {"ok": True, "id": doc_id}
+
+
+@app.put("/api/agent-docs/{doc_id}")
+def api_update_agent_doc(doc_id: int, payload: dict):
+    update_agent_doc(doc_id, payload)
+    return {"ok": True}
+
+
+@app.get("/api/agent-timing")
+def api_agent_timing():
+    """Return average execution time per agent based on completed tasks."""
+    return get_agent_timing_stats()
+
+
+# ── Cost endpoints ───────────────────────────────────────────────────────────
 
 @app.get("/api/costs")
 def get_costs():
@@ -231,6 +371,9 @@ def _extract_file_text(path: Path) -> str:
 
 
 BLOCKING_PREVENTION_RULES = """
+
+INSTRUCAO CRITICA — ACESSO AOS DOCUMENTOS:
+Voce TEM ACESSO aos documentos do cliente. Se a secao "DOCUMENTOS DISPONÍVEIS PARA ANÁLISE" estiver presente acima, ela contem o texto extraido dos arquivos que o MD fez upload (PDFs, planilhas, etc.). Use esse conteudo como base da sua analise. NUNCA diga que nao recebeu documentos, que nao tem acesso, ou que precisa que enviem arquivos — se o conteudo esta na secao acima, voce ja o tem. Se a secao indicar "Nenhum documento enviado ainda", ai sim informe que nenhum documento foi carregado e prossiga com analise baseada nas informacoes da operacao.
 
 INSTRUCAO CRITICA — NAO BLOQUEIE O PIPELINE:
 Voce NUNCA deve se recusar a produzir um output por falta de documentos ou informacoes.
@@ -658,14 +801,29 @@ async def run_agent_task(payload: dict):
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY nao configurada no servidor")
-    try:
-        agent_id = payload.get("agent_id", "")
-        operation = payload.get("operation", {})
-        file_context = payload.get("file_context", "")
-        task_title = payload.get("task_title", "")
-        additional_context = payload.get("additional_context", "")
-        custom_prompt = payload.get("custom_prompt", "").strip()
 
+    agent_id = payload.get("agent_id", "")
+    operation = payload.get("operation", {})
+    op_id = operation.get("id", "")
+    task_id = payload.get("task_id", "")
+    file_context = payload.get("file_context", "")
+    task_title = payload.get("task_title", "")
+    additional_context = payload.get("additional_context", "")
+    custom_prompt = payload.get("custom_prompt", "").strip()
+
+    # Server-side fallback: se o frontend nao enviou file_context, buscar direto
+    company = operation.get("company", "")
+    if not file_context and company:
+        file_context = _get_file_context(company)
+
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Mark task as running in DB
+    if task_id:
+        update_task(task_id, {"status": "running", "started_at": now_iso, "column_name": "Em Analise"})
+
+    try:
         if custom_prompt:
             base_prompt = custom_prompt
         else:
@@ -676,7 +834,8 @@ OPERACAO SENDO ANALISADA:
 - Empresa: {operation.get('company', 'N/D')}
 - Tipo: {operation.get('type', 'N/D')} — {operation.get('instrument', operation.get('opType', 'N/D'))}
 - Valor estimado: R$ {operation.get('value', 'N/D')}
-- Setor: {operation.get('sector', 'N/D')}
+- Segmento B3: {operation.get('segment', 'N/D')}
+- Setor B3: {operation.get('sector', 'N/D')}
 - Rating atual: {operation.get('rating', 'N/D')}
 - Prazo: {operation.get('deadline', 'N/D')} meses
 - Garantias: {', '.join(operation.get('guarantees', [])) or 'Nao informadas'}
@@ -699,10 +858,38 @@ OPERACAO SENDO ANALISADA:
             system=system,
             messages=[{"role": "user", "content": f"Execute sua tarefa: {task_title}"}],
         )
-        return {"text": response.content[0].text, "agent_id": agent_id}
+        result_text = response.content[0].text
+        completed_at = datetime.now(timezone.utc).isoformat()
+
+        # Mark task as completed in DB
+        if task_id:
+            update_task(task_id, {
+                "status": "completed",
+                "result_text": result_text,
+                "completed_at": completed_at,
+                "column_name": "Em Revisao",
+            })
+
+        # Auto-register agent doc as 'rascunho' in DB
+        if op_id and agent_id:
+            doc_name = AGENT_DOC_NAMES.get(agent_id, task_title or "Output")
+            save_agent_doc({
+                "operation_id": op_id,
+                "agent_id": agent_id,
+                "name": doc_name,
+                "status": "rascunho",
+                "version": "v1.0",
+                "date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+            })
+
+        return {"text": result_text, "agent_id": agent_id, "task_status": "completed"}
     except _anthropic.APIStatusError as e:
+        if task_id:
+            update_task(task_id, {"status": "failed", "error_message": f"API error: {e.message}"})
         raise HTTPException(status_code=e.status_code, detail=f"Anthropic API error: {e.message}")
     except Exception as e:
+        if task_id:
+            update_task(task_id, {"status": "failed", "error_message": str(e)})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -805,6 +992,21 @@ Você opera com a experiência e a autoridade de um Managing Director Sênior de
 
 Regra de bloqueio: nas Etapas 1 e 4, onde dois agentes rodam em paralelo, a etapa seguinte só é desbloqueada quando AMBAS as tarefas estiverem aprovadas pelo MD. Documentos pendentes não bloqueiam o fluxo — agentes prosseguem com o disponível e listam o que falta.
 
+# COMO FUNCIONA A GERAÇÃO DE OUTPUTS (REGRA CRÍTICA)
+Os outputs (documentos de análise, relatórios, modelos financeiros) são GERADOS AUTOMATICAMENTE pelos agentes do pipeline. Você NÃO deve dizer ao MD humano que ele precisa "entregar", "anexar" ou "enviar" outputs — quem produz os outputs são os agentes.
+- Quando o MD perguntar sobre outputs pendentes, explique que os agentes estão processando (ou aguardando aprovação da etapa anterior) e que os documentos ficarão disponíveis automaticamente na aba "Documentos e Operações" assim que os agentes concluírem.
+- Outputs pendentes = agentes que ainda não concluíram a execução da sua etapa, NÃO documentos que o MD precisa produzir ou anexar.
+- A única ação do MD humano no pipeline é: (1) fazer upload de documentos do CLIENTE (demonstrativos, contratos, etc.) na abertura do projeto, e (2) revisar e aprovar/devolver os outputs que os agentes geram.
+- NUNCA confunda "documentos do cliente" (uploads feitos pelo MD) com "outputs dos agentes" (análises geradas automaticamente pelo pipeline).
+
+# VELOCIDADE DE EXECUÇÃO DOS AGENTES (REGRA CRÍTICA)
+Os agentes desta plataforma são chamadas de IA (Claude API) — cada tarefa executa em SEGUNDOS a poucos MINUTOS, não em horas ou dias. O pipeline completo (5 etapas) pode ser concluído em menos de 1 hora se o MD aprovar cada etapa rapidamente. O único fator limitante de tempo é o ciclo de revisão humana (você revisa, aprova ou devolve). NUNCA estime prazos em dias por etapa como se fossem analistas humanos. Sempre deixe claro ao MD que a velocidade depende dele, não dos agentes.
+
+Quando o contexto da sessão incluir uma seção "MÉTRICAS DE EXECUÇÃO DOS AGENTES", USE esses dados reais para responder perguntas sobre prazos. Cite os tempos médios de execução de cada agente e calcule o tempo total estimado com base neles. Se não houver métricas disponíveis (nenhuma tarefa concluída ainda), informe que cada agente executa em 1-3 minutos e que o pipeline completo leva menos de 30 minutos de execução técnica.
+
+# ACESSO A DOCUMENTOS ENVIADOS
+Você tem acesso ao conteúdo dos documentos que o MD humano fez upload para cada operação. O contexto dos documentos é injetado junto com o status das operações a cada mensagem. Use essas informações para responder perguntas sobre os dados da empresa, estimar prazos e fundamentar suas recomendações. Se o contexto dos documentos estiver presente na sessão, NUNCA diga que não tem acesso — você tem. Analise o conteúdo e responda com base nele.
+
 # FRAMEWORK REGULATÓRIO — RESPONSABILIDADES DO MD
 Como MD, você é o responsável final pelos seguintes aspectos regulatórios em cada operação:
 - CVM 400 / Resolução 160/2022: você aprova o protocolo do prospecto junto ao jurídico e é o signatário responsável perante a CVM
@@ -818,18 +1020,24 @@ Como MD, você é o responsável final pelos seguintes aspectos regulatórios em
 - Rule 144A / Reg S (SEC): em operações com tranche internacional, você coordena a atuação com o co-manager americano e garante conformidade com o regime SEC
 - FCPA / OFAC: você aprova o clearance de sanções e o compliance anticorrupção para emissores e investidores com nexo internacional
 
-# CONTEXTO DE OPERAÇÃO INJETADO
-Você receberá, em toda sessão, o seguinte contexto:
-- Lista de todas as operações ativas com status de cada etapa e tarefa
-- Documentos e outputs das 3 operações mais recentes
-- Perguntas ou direcionamentos diretos do MD humano via chat
+# CONTEXTO DE OPERAÇÃO INJETADO (REGRA CRÍTICA — LEIA COM ATENÇÃO)
+Você TEM ACESSO DIRETO a todas as informações da plataforma. O contexto completo é injetado automaticamente em TODA mensagem que você recebe. Isso inclui:
+- Lista de TODAS as operações ativas com: nome, tipo, instrumento, etapa atual, status, prioridade, segmento/setor B3
+- Documentos do CLIENTE que já foram uploaded: nome do arquivo, status de análise
+- Documentos PENDENTES do cliente: lista do que falta
+- Outputs dos AGENTES já gerados: nome do documento, status (rascunho/em_revisao/aprovado)
+- Conteúdo extraído dos documentos uploaded (até 4000 chars por operação)
+- Métricas de execução dos agentes: tempo médio, mínimo e máximo de cada agente
+
+NUNCA diga ao MD que você "não tem acesso", "não consegue consultar", "precisa que ele verifique no sistema", ou "navegação precisa ser feita pela interface". Você JÁ TEM todos os dados — eles estão no contexto desta mensagem. Use-os diretamente. Se uma operação não aparecer no contexto, significa que não existe no pipeline — informe isso ao MD. Se os documentos não aparecerem, diga que nenhum documento foi uploaded para aquela operação ainda.
 
 # COMO REPORTAR STATUS
-Quando o MD perguntar sobre o status de uma operação, estruture sempre assim:
+Quando o MD perguntar sobre o status de uma operação, use os dados do contexto injetado e estruture sempre assim:
 - Empresa e instrumento da operação
 - Etapa atual e agentes em execução ou aguardando aprovação do MD
 - Próxima ação necessária do MD (o que ele precisa fazer agora)
-- Documentos pendentes que podem impactar o pipeline
+- Documentos do cliente já recebidos e documentos pendentes
+- Outputs dos agentes já gerados com status
 - Alertas regulatórios relevantes (quiet period, PLD/FT pendente, KYC não concluído)
 - Alertas de qualidade dos agentes concluídos (red flags sinalizados pelo Legal ou Risk & Compliance)
 
@@ -862,7 +1070,7 @@ Apresente ao MD uma revisão estruturada:
 # COMO RESPONDER PERGUNTAS DO MD
 - Sobre outputs de agentes específicos: sintetize os 3–5 pontos mais relevantes, não repita tudo
 - Sobre decisões de estruturação: apresente 2–3 opções com prós e contras objetivos
-- Sobre timelines: estime com base nas etapas restantes e documente as premissas
+- Sobre timelines: os agentes são chamadas de IA (Claude API) e executam em SEGUNDOS a poucos MINUTOS — NÃO em dias. O único fator de tempo real é o ciclo de revisão do MD humano (revisar output → aprovar ou devolver). Ao estimar prazos, deixe claro que a execução técnica de cada etapa é quase instantânea e que o prazo total depende da velocidade de aprovação do MD. NUNCA estime dias por etapa como se fossem analistas humanos trabalhando
 - Sobre questões regulatórias: responda com precisão; se houver dúvida sobre aplicação de uma norma específica, sinalize que o Legal Advisor deve ser consultado
 - Quando não tiver informação suficiente: pergunte antes de especular — nunca invente dados ou outputs de agentes
 - Sobre ajustes em outputs anteriores: releia o output original, incorpore o feedback do MD e coordene o reprocessamento""" + CHAT_FORMAT_RULES
@@ -879,7 +1087,18 @@ async def chat_with_md(payload: dict):
         history = payload.get("messages", [])
         base_prompt = payload.get("system_prompt") or MD_SYSTEM_PROMPT
         ops_context = payload.get("operations_context", "")
-        system = base_prompt + (ops_context if ops_context else "") + CHAT_FORMAT_RULES
+        company = payload.get("company", "")
+
+        # Server-side: sempre buscar documentos pelo nome da empresa
+        file_section = ""
+        if company:
+            ctx = _get_file_context(company)
+            if ctx:
+                file_section = f"\n\nDOCUMENTOS DISPONIVEIS PARA ANALISE — {company}:\n{ctx}"
+            else:
+                file_section = f"\n\nNenhum documento encontrado para {company}. Se o MD mencionar documentos, oriente-o a fazer upload na aba de Operacoes."
+
+        system = base_prompt + (ops_context if ops_context else "") + file_section + CHAT_FORMAT_RULES
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=2048,

@@ -1,10 +1,18 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, BRL_COMPACT, DOC_CHECKLIST } from '../data/mockData'
-import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info, MessageSquare, ToggleLeft, ToggleRight, Ban } from 'lucide-react'
+import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info, MessageSquare, ToggleLeft, ToggleRight, Ban, Timer } from 'lucide-react'
 import TermSheetModal from './TermSheetModal'
 
 const API = import.meta.env.VITE_API_URL || ''
+
+function formatTime(seconds) {
+  if (!seconds || seconds <= 0) return null
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const min = Math.floor(seconds / 60)
+  const sec = Math.round(seconds % 60)
+  return sec > 0 ? `${min}m ${sec}s` : `${min}m`
+}
 
 // Documentos esperados do pipeline por agente (ordem de execução)
 const EXPECTED_AGENT_DOCS = [
@@ -54,6 +62,11 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
   const [uploadingDocId, setUploadingDocId] = useState(null)
   const [unavailableDoc, setUnavailableDoc] = useState(null)
   const docFileRefs = useRef({})
+  const [agentTiming, setAgentTiming] = useState({})
+
+  useEffect(() => {
+    fetch(`${API}/api/agent-timing`).then(r => r.json()).then(setAgentTiming).catch(() => {})
+  }, [])
 
   // Always read operation from live state (avoids stale snapshot)
   const op = state.operations.find(o => o.id === operation.id) || operation
@@ -275,6 +288,8 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
             {expectedDocs.map((expected, i) => {
               const generated = generatedDocs.find(d => d.agent === expected.agent)
               const agent = AGENTS.find(a => a.id === expected.agent)
+              const timing = agentTiming[expected.agent]
+              const timeStr = timing ? formatTime(timing.avg_seconds) : null
               if (generated) {
                 const st = STATUS_CONFIG[generated.status] || STATUS_CONFIG.rascunho
                 return (
@@ -285,6 +300,7 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[10px]" style={{ color: agent?.color }}>{agent?.name?.split(' ')[0]}</span>
                         <span className="text-[10px] text-gray-500">· {generated.version} · {generated.date}</span>
+                        {timeStr && <span className="text-[10px] text-gray-500 flex items-center gap-0.5"><Timer size={9} className="text-gray-500" /> {timeStr}</span>}
                       </div>
                     </div>
                     <span className={st.cls}>{st.label}</span>
@@ -316,6 +332,7 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px]" style={{ color: agent?.color || '#666' }}>{agent?.name?.split(' ')[0] || expected.agent}</span>
                       <span className="text-[10px] text-gray-600">· {expected.stage}</span>
+                      {timeStr && <span className="text-[10px] text-gray-600 flex items-center gap-0.5"><Timer size={9} /> ~{timeStr}</span>}
                     </div>
                   </div>
                   <span className="bg-surface-200 text-gray-500 badge text-[10px]">Nao Disponivel</span>

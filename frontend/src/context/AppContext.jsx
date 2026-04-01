@@ -1,7 +1,8 @@
-import { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
 import { TASKS, MESSAGES, AGENTS, TRAINING_RECOMMENDATIONS, MD_DEMANDS, OPERATIONS, DOC_CHECKLIST } from '../data/mockData'
 
 const AppContext = createContext(null)
+const API = import.meta.env.VITE_API_URL || ''
 
 const DATA_VERSION = '2026.05.b'
 const AGENTS_VERSION = '2026.04.d'
@@ -233,6 +234,7 @@ function reducer(state, action) {
         stage: 'Etapa 1 — Revisao Documental',
         company: form.company,
         cnpj: form.cnpj,
+        segment: form.segment,
         sector: form.sector,
         deadline: form.deadline,
         rating: form.rating,
@@ -364,6 +366,20 @@ function reducer(state, action) {
       return { ...state, currentPage: 'reviews', pendingThreadOpen: action.payload }
     case 'CLEAR_PENDING_THREAD':
       return { ...state, pendingThreadOpen: null }
+    case 'INIT_FROM_SERVER': {
+      const { operations: serverOps, tasks: serverTasks } = action.payload
+      if (!serverOps || serverOps.length === 0) return state
+      // Server is source of truth — merge agentDocs from server into operations
+      const operations = serverOps.map(op => ({
+        ...op,
+        agentDocs: op.agentDocs || [],
+      }))
+      // Map server tasks back to frontend format
+      const tasks = serverTasks && serverTasks.length > 0 ? serverTasks : state.tasks
+      try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
+      try { localStorage.setItem('ib_tasks', JSON.stringify(tasks)) } catch {}
+      return { ...state, operations, tasks }
+    }
     case 'ADD_PROPOSAL':
       return { ...state, proposals: [action.payload, ...state.proposals] }
     case 'ADD_TOAST':
@@ -375,8 +391,80 @@ function reducer(state, action) {
   }
 }
 
+// Fire-and-forget API call for server persistence
+function persistToServer(action, state) {
+  const json = (url, body) => fetch(`${API}${url}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).catch(() => {})
+  const put = (url, body) => fetch(`${API}${url}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).catch(() => {})
+
+  switch (action.type) {
+    case 'OPEN_PROJECT': {
+      // After reducer runs, persist the new operation and tasks
+      const opId = action.payload.opId || state.operations[0]?.id
+      const op = state.operations.find(o => o.id === opId)
+      if (op) json('/api/operations', op)
+      state.tasks.filter(t => t.operation === opId).forEach(t => json('/api/tasks', t))
+      break
+    }
+    case 'TOGGLE_OPERATION_PAUSE': {
+      const op = state.operations.find(o => o.id === action.payload)
+      if (op) put(`/api/operations/${action.payload}`, { paused: op.paused })
+      break
+    }
+    case 'ADD_AGENT_DOC': {
+      const { opId, doc } = action.payload
+      json('/api/agent-docs', { operation_id: opId, agent_id: doc.agent, name: doc.name, status: doc.status, version: doc.version, date: doc.date })
+      break
+    }
+    case 'APPEND_TASK_LOG': {
+      const task = state.tasks.find(t => t.id === action.payload.taskId)
+      if (task) put(`/api/tasks/${action.payload.taskId}`, { column_name: task.column, log: task.log })
+      break
+    }
+    case 'UPDATE_CLIENT_DOC':
+    case 'TOGGLE_CLIENT_DOC': {
+      const op = state.operations.find(o => o.id === action.payload.opId)
+      if (op) put(`/api/operations/${action.payload.opId}`, { clientDocs: op.clientDocs, pendingDocs: op.pendingDocs })
+      break
+    }
+  }
+}
+
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
+  const hydrated = useRef(false)
+
+  // Hydrate from server on mount
+  useEffect(() => {
+    if (hydrated.current) return
+    hydrated.current = true
+    fetch(`${API}/api/state`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.operations && data.operations.length > 0) {
+          dispatch({ type: 'INIT_FROM_SERVER', payload: data })
+        }
+      })
+      .catch(err => console.warn('[AppContext] Server hydration failed, using localStorage:', err.message))
+  }, [])
+
+  // Wrapped dispatch that also persists to server
+  const persistedDispatch = useCallback((action) => {
+    dispatch(action)
+    // Use setTimeout to allow reducer to update state first, then read new state
+    // For write-through we use the action payload directly where possible
+    setTimeout(() => {
+      try {
+        // Read latest state from localStorage since we can't access state synchronously after dispatch
+        const ops = JSON.parse(localStorage.getItem('ib_operations') || '[]')
+        const tasks = JSON.parse(localStorage.getItem('ib_tasks') || '[]')
+        persistToServer(action, { operations: ops, tasks })
+      } catch {}
+    }, 50)
+  }, [])
 
   const toast = useCallback((message, type = 'info') => {
     const id = Date.now()
@@ -385,7 +473,7 @@ export function AppProvider({ children }) {
   }, [])
 
   return (
-    <AppContext.Provider value={{ state, dispatch, toast }}>
+    <AppContext.Provider value={{ state, dispatch: persistedDispatch, toast }}>
       {children}
     </AppContext.Provider>
   )

@@ -86,9 +86,18 @@ function MDChat() {
           return idx >= firstUser
         })
       const opsContext = state.operations.length > 0
-        ? `\n\nOPERAÇÕES ATIVAS NO PIPELINE:\n` + state.operations.map(op =>
-            `- ${op.name} | Tipo: ${op.type} | Status: ${op.status} | Etapa: ${op.stage} | Prioridade: ${op.priority}${op.pendingDocs?.length > 0 ? ` | Docs pendentes: ${op.pendingDocs.join(', ')}` : ''}`
-          ).join('\n')
+        ? `\n\nOPERAÇÕES ATIVAS NO PIPELINE:\n` + state.operations.map(op => {
+            const uploadedDocs = (op.clientDocs || []).filter(d => d.enabled && d.files && d.files.length > 0)
+            const uploadedInfo = uploadedDocs.length > 0
+              ? ` | Docs recebidos (${uploadedDocs.length}): ${uploadedDocs.map(d => `${d.label} [${d.status}]${d.files.map(f => ` — ${f.name}`).join('')}`).join('; ')}`
+              : ' | Nenhum documento do cliente recebido ainda'
+            const pendingInfo = op.pendingDocs?.length > 0 ? ` | Docs pendentes do cliente: ${op.pendingDocs.join(', ')}` : ''
+            const agentDocs = (op.agentDocs || []).filter(d => d.status)
+            const agentInfo = agentDocs.length > 0
+              ? ` | Outputs dos agentes (${agentDocs.length}): ${agentDocs.map(d => `${d.name} [${d.status}]`).join('; ')}`
+              : ''
+            return `- ${op.name} | Tipo: ${op.type} | Status: ${op.status} | Etapa: ${op.stage} | Prioridade: ${op.priority}${uploadedInfo}${pendingInfo}${agentInfo}`
+          }).join('\n')
         : '\n\nNenhuma operacao ativa no pipeline no momento.'
 
       const fileContextParts = await Promise.all(
@@ -103,10 +112,23 @@ function MDChat() {
       )
       const filesContext = fileContextParts.filter(Boolean).join('')
 
+      // Fetch agent timing metrics for MD context
+      let timingContext = ''
+      try {
+        const tr = await fetch(`${API}/api/agent-timing`)
+        const timingData = await tr.json()
+        if (Object.keys(timingData).length > 0) {
+          const agentNames = { accountant: 'Contador', legal_advisor: 'Jurídico', research_analyst: 'Research Analyst', financial_modeler: 'Financial Modeler', dcm_specialist: 'DCM Specialist', ecm_specialist: 'ECM Specialist', risk_compliance: 'Risk & Compliance', deck_builder: 'Deck Builder' }
+          timingContext = '\n\nMÉTRICAS DE EXECUÇÃO DOS AGENTES (dados reais):\n' + Object.entries(timingData).map(([id, s]) =>
+            `- ${agentNames[id] || id}: média ${s.avg_seconds}s (min ${s.min_seconds}s / max ${s.max_seconds}s) — ${s.executions} execução(ões)`
+          ).join('\n')
+        }
+      } catch {}
+
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, operations_context: opsContext + filesContext }),
+        body: JSON.stringify({ messages: history, operations_context: opsContext + filesContext + timingContext }),
       })
       let data
       try { data = await res.json() } catch { throw new Error(`Servidor indisponivel (HTTP ${res.status}) — tente novamente em alguns segundos`) }

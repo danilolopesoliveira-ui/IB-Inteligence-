@@ -5,6 +5,20 @@ import { CheckCircle, Clock, XCircle, Upload, ChevronDown, AlertTriangle, Folder
 
 const API = import.meta.env.VITE_API_URL || ''
 
+// Classificação setorial B3
+const B3_SECTORS = {
+  'Bens Industriais': ['Comércio', 'Construção e Engenharia', 'Máquinas e Equipamentos', 'Material de Transporte', 'Serviços Diversos', 'Transporte'],
+  'Comunicações': ['Mídia', 'Telecomunicações'],
+  'Consumo Cíclico': ['Automóveis e Motocicletas', 'Comércio', 'Construção Civil', 'Diversos', 'Hotéis e Restaurantes', 'Mídia', 'Tecidos, Vestuário e Calçados', 'Utilidades Domésticas', 'Viagens e Lazer'],
+  'Consumo Não Cíclico': ['Agropecuária', 'Alimentos Processados', 'Bebidas', 'Comércio e Distribuição', 'Diversos', 'Produtos de Uso Pessoal e de Limpeza', 'Saúde'],
+  'Financeiro': ['Exploração de Imóveis', 'Holdings Diversificadas', 'Intermediários Financeiros', 'Previdência e Seguros', 'Securitizadoras de Recebíveis', 'Serviços Financeiros Diversos'],
+  'Materiais Básicos': ['Embalagens', 'Madeira e Papel', 'Materiais Diversos', 'Mineração', 'Químicos', 'Siderurgia e Metalurgia'],
+  'Petróleo, Gás e Biocombustíveis': ['Petróleo, Gás e Biocombustíveis'],
+  'Saúde': ['Comércio e Distribuição', 'Equipamentos', 'Medicamentos e Outros Produtos', 'Serviços Médico-Hospitalares, Análises e Diagnósticos'],
+  'Tecnologia da Informação': ['Computadores e Equipamentos', 'Programas e Serviços'],
+  'Utilidade Pública': ['Água e Saneamento', 'Energia Elétrica', 'Gás'],
+}
+
 const STEPS = ['Identificacao', 'Checklist de Documentos', 'Configuracao dos Agentes']
 
 function Stepper({ step, setStep }) {
@@ -37,8 +51,23 @@ function StepIdentification({ form, setForm }) {
         <div><label className="text-xs text-gray-400 mb-1 block">Empresa Emissora</label><input className="input-field" value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} placeholder="Ex: Eneva S.A." /></div>
         <div><label className="text-xs text-gray-400 mb-1 block">CNPJ</label><input className="input-field" value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0001-00" /></div>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Segmento (B3)</label>
+          <select className="input-field" value={form.segment} onChange={e => setForm({ ...form, segment: e.target.value, sector: '' })}>
+            <option value="">Selecione...</option>
+            {Object.keys(B3_SECTORS).map(seg => <option key={seg} value={seg}>{seg}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Setor (B3)</label>
+          <select className="input-field" value={form.sector} onChange={e => setForm({ ...form, sector: e.target.value })} disabled={!form.segment}>
+            <option value="">{form.segment ? 'Selecione...' : 'Selecione o segmento primeiro'}</option>
+            {(B3_SECTORS[form.segment] || []).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
       <div className="grid grid-cols-3 gap-4">
-        <div><label className="text-xs text-gray-400 mb-1 block">Setor</label><input className="input-field" value={form.sector} onChange={e => setForm({ ...form, sector: e.target.value })} placeholder="Energia Eletrica" /></div>
         <div><label className="text-xs text-gray-400 mb-1 block">Tipo de Operacao</label>
           <select className="input-field" value={form.opType} onChange={e => setForm({ ...form, opType: e.target.value })}>
             <optgroup label="DCM"><option>Debentures</option><option>CRI</option><option>CRA</option><option>CCB</option><option>Loan Offshore</option><option>Bilateral</option></optgroup>
@@ -405,7 +434,7 @@ function PendingPanel() {
   )
 }
 
-const EMPTY_FORM = { company: '', cnpj: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantees: [], agents: ['md_orchestrator'], priority: 'Alta', notes: '', selectedDocs: [], additionalRequest: '' }
+const EMPTY_FORM = { company: '', cnpj: '', segment: '', sector: '', opType: 'Debentures', value: '', deadline: '', rating: '', guarantees: [], agents: ['md_orchestrator'], priority: 'Alta', notes: '', selectedDocs: [], additionalRequest: '' }
 
 export default function ProjectOpening() {
   const { dispatch, toast, state } = useApp()
@@ -426,20 +455,14 @@ export default function ProjectOpening() {
     setUploadedDocs({})
     setDisabledDocs([])
 
-    // Fetch file context uploaded for this company
-    let fileContext = ''
-    try {
-      const r = await fetch(`${API}/api/files-context/${encodeURIComponent(capturedForm.company)}`)
-      const d = await r.json()
-      fileContext = d.context || ''
-    } catch {}
-
+    // Server busca documentos automaticamente via company name
     const ecmTypes = ['IPO', 'Follow-on', 'Block Trade']
     const operation = {
       id: opId,
       name: `${capturedForm.company} — ${capturedForm.opType}`,
       type: ecmTypes.includes(capturedForm.opType) ? 'ECM' : 'DCM',
       company: capturedForm.company,
+      segment: capturedForm.segment,
       sector: capturedForm.sector,
       value: capturedForm.value,
       rating: capturedForm.rating,
@@ -459,9 +482,9 @@ export default function ProjectOpening() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            task_id: task.taskId,
             agent_id: task.agentId,
             operation,
-            file_context: fileContext,
             task_title: task.title,
             additional_context: capturedForm.additionalRequest,
             custom_prompt: agentConfig?.promptBase || '',
@@ -494,7 +517,7 @@ export default function ProjectOpening() {
             doc: {
               name: docNames[task.agentId] || task.title,
               agent: task.agentId,
-              status: 'em_revisao',
+              status: 'rascunho',
               version: 'v1.0',
               date: new Date().toLocaleDateString('pt-BR'),
             }
