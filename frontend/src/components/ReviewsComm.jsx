@@ -151,6 +151,7 @@ function Thread({ thread }) {
       const firstUser = filtered.findIndex(m => m.role === 'user')
       const history = firstUser >= 0 ? filtered.slice(firstUser) : filtered
 
+      // Fetch file context for agent to analyze
       let fileContext = ''
       if (op?.company) {
         try {
@@ -160,13 +161,23 @@ function Thread({ thread }) {
         } catch {}
       }
 
+      const uploadedDocs = (op?.clientDocs || []).filter(d => d.enabled && d.files && d.files.length > 0)
+      const uploadedInfo = uploadedDocs.length > 0
+        ? `\nDocs recebidos (${uploadedDocs.length}): ${uploadedDocs.map(d => `${d.label} [${d.status}]`).join('; ')}`
+        : ''
+      const pendingInfo = op?.pendingDocs?.length > 0 ? `\nDocs pendentes do cliente: ${op.pendingDocs.join(', ')}` : ''
+      const opsCtx = op
+        ? `\n\nOperacao: ${op.name} | Tipo: ${op.type} | Instrumento: ${op.instrument} | Etapa: ${op.stage || 'Etapa 1'} | Segmento: ${op.segment || 'N/D'} | Setor: ${op.sector || 'N/D'}${uploadedInfo}${pendingInfo}`
+        : ''
+
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history,
           system_prompt: agent?.promptBase ? agent.promptBase + fileContext : undefined,
-          operations_context: op ? `\n\nOperacao: ${op.name} | Tipo: ${op.type} | Instrumento: ${op.instrument} | Etapa: ${op.stage || 'Etapa 1'}${op.pendingDocs?.length > 0 ? ` | Docs pendentes: ${op.pendingDocs.join(', ')}` : ''}` : '',
+          company: op?.company || '',
+          operations_context: opsCtx,
         }),
       })
       let data
@@ -215,16 +226,6 @@ function Thread({ thread }) {
       }})
       toast('Etapa aprovada!', 'success')
 
-      // Fetch file context once
-      let fileContext = ''
-      if (op?.company) {
-        try {
-          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
-          const d = await r.json()
-          fileContext = d.context || ''
-        } catch {}
-      }
-
       // Determine next tasks — deduplicate by suffix
       const startedSuffixes = new Set()
       const newTaskIds = []
@@ -247,14 +248,15 @@ function Thread({ thread }) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                task_id: nextTask.id,
                 agent_id: nextTask.agent,
                 operation: op || { id: opId },
-                file_context: fileContext,
                 task_title: nextTask.title,
                 custom_prompt: agentConfig?.promptBase || '',
               }),
             })
-            const data = await r.json()
+            let data
+            try { data = await r.json() } catch { throw new Error(`Servidor indisponivel (HTTP ${r.status}) — tente novamente`) }
             if (data.text) {
               const t2 = new Date().toISOString()
               dispatch({ type: 'APPEND_TASK_LOG', payload: {
@@ -271,12 +273,13 @@ function Thread({ thread }) {
                 text: data.text,
               }})
               // Registra documento gerado em Documentos Gerados da operação
+              // Status 'rascunho' — será promovido a 'em_revisao' ou 'aprovado' pelo MD
               dispatch({ type: 'ADD_AGENT_DOC', payload: {
                 opId: opId,
                 doc: {
                   name: AGENT_DOC_NAMES[nextTask.agent] || nextTask.title,
                   agent: nextTask.agent,
-                  status: 'em_revisao',
+                  status: 'rascunho',
                   version: 'v1.0',
                   date: new Date().toLocaleDateString('pt-BR'),
                 }
@@ -349,17 +352,7 @@ function Thread({ thread }) {
     }
 
     try {
-      // Fetch file context
-      let fileContext = ''
-      if (op?.company) {
-        try {
-          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
-          const d = await r.json()
-          fileContext = d.context || ''
-        } catch {}
-      }
-
-      // Reprocess each task with the MD feedback
+      // Reprocess each task with the MD feedback (server busca docs automaticamente)
       for (const taskId of taskIds) {
         const task = appState.tasks.find(t => t.id === taskId)
         if (!task) continue
@@ -370,15 +363,16 @@ function Thread({ thread }) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              task_id: taskId,
               agent_id: task.agent,
               operation: op || { id: thread.operation },
-              file_context: fileContext,
               task_title: task.title,
               custom_prompt: agentConfig?.promptBase || '',
               additional_context: `FEEDBACK DO MD PARA REVISAO — O MD devolveu esta etapa com os seguintes ajustes solicitados:\n${feedback}\n\nReprocesse sua analise incorporando este feedback. Mantenha o que estava correto e ajuste os pontos sinalizados.`,
             }),
           })
-          const data = await r.json()
+          let data
+          try { data = await r.json() } catch { throw new Error(`Servidor indisponivel (HTTP ${r.status}) — tente novamente`) }
           if (data.text) {
             const t2 = new Date().toISOString()
             dispatch({ type: 'APPEND_TASK_LOG', payload: {
