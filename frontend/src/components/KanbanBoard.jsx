@@ -260,7 +260,9 @@ export default function KanbanBoard() {
   const { tasks, filterAgent, filterOperation } = state
   const [selectedTaskId, setSelectedTaskId] = useState(null)
 
+  const pausedOpIds = new Set(state.operations.filter(o => o.paused).map(o => o.id))
   const filteredTasks = tasks.filter(t => {
+    if (pausedOpIds.has(t.operation)) return false
     if (filterAgent && t.agent !== filterAgent) return false
     if (filterOperation && t.operation !== filterOperation) return false
     return true
