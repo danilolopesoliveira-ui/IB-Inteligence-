@@ -516,12 +516,14 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                       {/* Download */}
                       <button
                         className="btn-ghost p-1.5"
-                        title="Download PDF"
+                        title="Download output do agente"
                         onClick={() => {
                           if (generated.id) {
                             window.open(`${API}/api/agent-docs/${generated.id}/download`, '_blank')
+                          } else if (op?.id && generated.agent) {
+                            window.open(`${API}/api/agent-docs/download-by-agent?operation_id=${encodeURIComponent(op.id)}&agent_id=${encodeURIComponent(generated.agent)}`, '_blank')
                           } else {
-                            toast('PDF ainda não foi gerado', 'error')
+                            toast('Output do agente ainda não disponível', 'error')
                           }
                         }}
                       ><Download size={13} /></button>

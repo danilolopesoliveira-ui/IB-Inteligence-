@@ -184,20 +184,78 @@ def api_update_agent_doc(doc_id: int, payload: dict):
 
 @app.get("/api/agent-docs/{doc_id}/download")
 def api_download_agent_doc(doc_id: int):
-    """Download the generated PDF for an agent doc."""
+    """Download agent doc: serve content_ref if exists, otherwise return result_text as .txt."""
     from database import get_connection
     conn = get_connection()
     row = conn.execute("SELECT * FROM agent_docs WHERE id = ?", (doc_id,)).fetchone()
-    conn.close()
     if not row:
+        conn.close()
         raise HTTPException(status_code=404, detail="Documento nao encontrado")
+
+    # If a physical file was generated, serve it
     content_ref = row["content_ref"]
-    if not content_ref or not Path(content_ref).exists():
-        raise HTTPException(status_code=404, detail="Arquivo PDF ainda nao foi gerado para este documento")
-    return FileResponse(
-        path=content_ref,
-        filename=Path(content_ref).name,
-        media_type="application/pdf",
+    if content_ref and Path(content_ref).exists():
+        conn.close()
+        return FileResponse(
+            path=content_ref,
+            filename=Path(content_ref).name,
+            media_type="application/pdf",
+        )
+
+    # Otherwise, get result_text from the latest completed task for this agent+operation
+    task_row = conn.execute(
+        "SELECT result_text, title FROM agent_tasks "
+        "WHERE operation_id = ? AND agent_id = ? AND status = 'completed' "
+        "ORDER BY completed_at DESC LIMIT 1",
+        (row["operation_id"], row["agent_id"]),
+    ).fetchone()
+    conn.close()
+
+    if not task_row or not task_row["result_text"]:
+        raise HTTPException(status_code=404, detail="Output do agente ainda nao disponivel — execute a tarefa primeiro")
+
+    doc_name = (row["name"] or row["agent_id"]).replace(" ", "_").replace("/", "-")
+    filename = f"{doc_name}_v{row['version'] or '1.0'}.txt"
+
+    return Response(
+        content=task_row["result_text"].encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/agent-docs/download-by-agent")
+def api_download_by_agent(operation_id: str, agent_id: str):
+    """Download agent output by operation+agent (frontend fallback when doc id is unknown)."""
+    from database import get_connection
+    conn = get_connection()
+
+    # Get doc metadata
+    doc_row = conn.execute(
+        "SELECT * FROM agent_docs WHERE operation_id = ? AND agent_id = ? ORDER BY id DESC LIMIT 1",
+        (operation_id, agent_id),
+    ).fetchone()
+
+    # Get task result
+    task_row = conn.execute(
+        "SELECT result_text, title FROM agent_tasks "
+        "WHERE operation_id = ? AND agent_id = ? AND status = 'completed' "
+        "ORDER BY completed_at DESC LIMIT 1",
+        (operation_id, agent_id),
+    ).fetchone()
+    conn.close()
+
+    if not task_row or not task_row["result_text"]:
+        raise HTTPException(status_code=404, detail="Output do agente ainda nao disponivel")
+
+    name = (doc_row["name"] if doc_row else None) or agent_id
+    version = (doc_row["version"] if doc_row else None) or "1.0"
+    filename = f"{name.replace(' ', '_').replace('/', '-')}_v{version}.txt"
+
+    return Response(
+        content=task_row["result_text"].encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
