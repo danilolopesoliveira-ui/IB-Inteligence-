@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { AGENTS, BRL_COMPACT, DOC_CHECKLIST } from '../data/mockData'
-import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info, MessageSquare, ToggleLeft, ToggleRight, Ban, Timer } from 'lucide-react'
+import { ChevronRight, FileText, Download, Eye, Clock, CheckCircle, AlertCircle, Loader, FileSignature, X, Pause, Play, Upload, Info, MessageSquare, ToggleLeft, ToggleRight, Ban, Timer, CornerDownLeft, Send } from 'lucide-react'
 import TermSheetModal from './TermSheetModal'
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -12,6 +12,34 @@ function formatTime(seconds) {
   const min = Math.floor(seconds / 60)
   const sec = Math.round(seconds % 60)
   return sec > 0 ? `${min}m ${sec}s` : `${min}m`
+}
+
+// Pipeline advancement logic — which agents unlock after approval
+const PIPELINE_NEXT = {
+  accountant: { nexts: ['research'],           requires: ['accountant', 'legal'] },
+  legal:      { nexts: ['research'],           requires: ['accountant', 'legal'] },
+  research:   { nexts: ['modeling'],           requires: ['research'] },
+  modeling:   { nexts: ['specialist', 'risk'], requires: ['modeling'] },
+  specialist: { nexts: ['deck'],               requires: ['specialist', 'risk'] },
+  risk:       { nexts: ['deck'],               requires: ['specialist', 'risk'] },
+  deck:       { nexts: [],                     requires: [] },
+}
+
+const AGENT_TO_SUFFIX = {
+  accountant: 'accountant', legal_advisor: 'legal', research_analyst: 'research',
+  financial_modeler: 'modeling', dcm_specialist: 'specialist', ecm_specialist: 'specialist',
+  risk_compliance: 'risk', deck_builder: 'deck',
+}
+
+const AGENT_DOC_NAMES = {
+  accountant:        'Análise Contábil e Ajustes (IFRS 16)',
+  legal_advisor:     'Due Diligence Jurídica',
+  research_analyst:  'Dossiê Analítico (Research Report)',
+  financial_modeler: 'Modelo Financeiro e Projeções',
+  dcm_specialist:    'Relatório de Viabilidade DCM',
+  ecm_specialist:    'Relatório de Viabilidade ECM',
+  risk_compliance:   'Relatório de Risco e Compliance',
+  deck_builder:      'Book de Crédito / CIM e Teaser',
 }
 
 // Documentos esperados do pipeline por agente (ordem de execução)
@@ -63,6 +91,10 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
   const [unavailableDoc, setUnavailableDoc] = useState(null)
   const docFileRefs = useRef({})
   const [agentTiming, setAgentTiming] = useState({})
+  const [approvingAgent, setApprovingAgent] = useState(null)
+  const [reviewAgent, setReviewAgent] = useState(null)
+  const [reviewFeedback, setReviewFeedback] = useState('')
+  const [reviewingAgent, setReviewingAgent] = useState(null)
 
   useEffect(() => {
     fetch(`${API}/api/agent-timing`).then(r => r.json()).then(setAgentTiming).catch(() => {})
@@ -70,6 +102,181 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
 
   // Always read operation from live state (avoids stale snapshot)
   const op = state.operations.find(o => o.id === operation.id) || operation
+
+  // Approve a generated doc → advance pipeline
+  const approveDoc = async (agentId) => {
+    setApprovingAgent(agentId)
+    try {
+      const now = new Date().toISOString()
+      const suffix = AGENT_TO_SUFFIX[agentId]
+      const taskId = `${op.id}_${suffix}`
+
+      // Mark task as Concluido
+      dispatch({ type: 'APPEND_TASK_LOG', payload: {
+        taskId,
+        column: 'Concluido',
+        entries: [{ time: now, agent: 'md_orchestrator', type: 'approve', text: `Documento aprovado pelo MD` }],
+      }})
+
+      // Update doc status to aprovado
+      dispatch({ type: 'ADD_AGENT_DOC', payload: {
+        opId: op.id,
+        doc: { agent: agentId, status: 'aprovado' },
+      }})
+      toast('Documento aprovado!', 'success')
+
+      // Check if all required docs for next stage are approved
+      const pipelineInfo = PIPELINE_NEXT[suffix]
+      if (!pipelineInfo || pipelineInfo.nexts.length === 0) {
+        toast('Pipeline concluído!', 'success')
+        return
+      }
+
+      const allDocs = [...(op.agentDocs || []), { agent: agentId, status: 'aprovado' }]
+      const allRequired = pipelineInfo.requires.every(reqSuffix => {
+        const reqAgentIds = Object.entries(AGENT_TO_SUFFIX).filter(([, s]) => s === reqSuffix).map(([a]) => a)
+        return reqAgentIds.some(aId => allDocs.find(d => d.agent === aId && d.status === 'aprovado'))
+      })
+
+      if (!allRequired) {
+        toast('Aguardando aprovação dos demais documentos desta etapa para avançar', 'info')
+        return
+      }
+
+      // Fetch file context
+      let fileContext = ''
+      if (op.company) {
+        try {
+          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
+          const d = await r.json()
+          fileContext = d.context || ''
+        } catch {}
+      }
+
+      // Trigger next stage agents
+      const startedSuffixes = new Set()
+      for (const nextSuffix of pipelineInfo.nexts) {
+        if (startedSuffixes.has(nextSuffix)) continue
+        startedSuffixes.add(nextSuffix)
+
+        const nextTask = state.tasks.find(t => t.operation === op.id && t.id.endsWith(`_${nextSuffix}`) && t.column === 'Backlog')
+        if (!nextTask) continue
+
+        try {
+          const agentConfig = state.agents.find(a => a.id === nextTask.agent)
+          const r = await fetch(`${API}/api/run-agent-task`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              task_id: nextTask.id,
+              agent_id: nextTask.agent,
+              operation: op,
+              file_context: fileContext,
+              task_title: nextTask.title,
+              custom_prompt: agentConfig?.promptBase || '',
+            }),
+          })
+          const data = await r.json()
+          if (data.text) {
+            const t2 = new Date().toISOString()
+            dispatch({ type: 'APPEND_TASK_LOG', payload: {
+              taskId: nextTask.id,
+              column: 'Em Revisao',
+              entries: [
+                { time: t2, agent: nextTask.agent, type: 'start', text: `Iniciado após aprovação: ${nextTask.title}` },
+                { time: t2, agent: nextTask.agent, type: 'progress', text: `Documento gerado — disponível em Documentos Gerados` },
+              ],
+            }})
+            dispatch({ type: 'ADD_AGENT_DOC', payload: {
+              opId: op.id,
+              doc: {
+                name: AGENT_DOC_NAMES[nextTask.agent] || nextTask.title,
+                agent: nextTask.agent,
+                status: 'rascunho',
+                version: 'v1.0',
+                date: new Date().toLocaleDateString('pt-BR'),
+              }
+            }})
+            toast(`${AGENTS.find(a => a.id === nextTask.agent)?.name || nextTask.agent} concluído — documento disponível`, 'success')
+          }
+        } catch (err) {
+          toast(`Erro ao executar próxima etapa: ${err.message}`, 'error')
+        }
+      }
+    } catch (err) {
+      toast(`Erro: ${err.message}`, 'error')
+    } finally {
+      setApprovingAgent(null)
+    }
+  }
+
+  // Request revision on a generated doc
+  const requestDocRevision = async (agentId) => {
+    if (!reviewFeedback.trim()) return
+    setReviewingAgent(agentId)
+    try {
+      const suffix = AGENT_TO_SUFFIX[agentId]
+      const taskId = `${op.id}_${suffix}`
+      const now = new Date().toISOString()
+
+      dispatch({ type: 'APPEND_TASK_LOG', payload: {
+        taskId,
+        column: 'Devolvido p/ Ajuste',
+        entries: [{ time: now, agent: 'md_orchestrator', type: 'review', text: `Devolvido para ajuste: ${reviewFeedback}` }],
+      }})
+
+      // Update doc status
+      dispatch({ type: 'ADD_AGENT_DOC', payload: {
+        opId: op.id,
+        doc: { agent: agentId, status: 'em_revisao' },
+      }})
+
+      // Reprocess
+      let fileContext = ''
+      if (op.company) {
+        try {
+          const r = await fetch(`${API}/api/files-context/${encodeURIComponent(op.company)}`)
+          const d = await r.json()
+          fileContext = d.context || ''
+        } catch {}
+      }
+
+      const task = state.tasks.find(t => t.id === taskId)
+      const agentConfig = state.agents.find(a => a.id === agentId)
+      const r = await fetch(`${API}/api/run-agent-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_id: taskId,
+          agent_id: agentId,
+          operation: op,
+          file_context: fileContext,
+          task_title: task?.title || '',
+          custom_prompt: agentConfig?.promptBase || '',
+          additional_context: `FEEDBACK DO MD PARA REVISAO:\n${reviewFeedback}\n\nReprocesse incorporando este feedback.`,
+        }),
+      })
+      const data = await r.json()
+      if (data.text) {
+        dispatch({ type: 'APPEND_TASK_LOG', payload: {
+          taskId,
+          column: 'Em Revisao',
+          entries: [{ time: new Date().toISOString(), agent: agentId, type: 'review', text: 'Reprocessado após feedback do MD' }],
+        }})
+        dispatch({ type: 'ADD_AGENT_DOC', payload: {
+          opId: op.id,
+          doc: { agent: agentId, status: 'rascunho', date: new Date().toLocaleDateString('pt-BR') },
+        }})
+        toast('Documento reprocessado — nova versão disponível', 'success')
+      }
+    } catch (err) {
+      toast(`Erro: ${err.message}`, 'error')
+    } finally {
+      setReviewingAgent(null)
+      setReviewAgent(null)
+      setReviewFeedback('')
+    }
+  }
 
   const handleDocUpload = async (e, doc) => {
     const file = e.target.files[0]
@@ -293,7 +500,8 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
               if (generated) {
                 const st = STATUS_CONFIG[generated.status] || STATUS_CONFIG.rascunho
                 return (
-                  <div key={i} className="card-hover p-4 flex items-center gap-4">
+                  <div key={i}>
+                  <div className="card-hover p-4 flex items-center gap-4">
                     <FileText size={18} className="text-gold flex-shrink-0" />
                     <div className="flex-1">
                       <p className="text-sm text-gray-200">{generated.name || expected.name}</p>
@@ -304,30 +512,72 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                       </div>
                     </div>
                     <span className={st.cls}>{st.label}</span>
-                    {/* Botão Revisões — abre chat com MD + agente específico */}
-                    <button
-                      onClick={() => dispatch({ type: 'OPEN_AGENT_CHAT', payload: {
-                        agentId: generated.agent,
-                        taskId: null,
-                        operationId: op.id,
-                        subject: `Revisão: ${generated.name || expected.name}`,
-                      }})}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] border border-surface-200 text-gray-400 hover:border-gold hover:text-gold transition-colors flex-shrink-0"
-                    >
-                      <MessageSquare size={11} /> Revisões
-                    </button>
-                    <button
-                      className="btn-ghost p-1"
-                      title={generated.content_ref ? 'Download PDF' : 'PDF não disponível'}
-                      disabled={!generated.id && !generated.content_ref}
-                      onClick={() => {
-                        if (generated.id) {
-                          window.open(`${API}/api/agent-docs/${generated.id}/download`, '_blank')
-                        } else {
-                          toast('PDF ainda não foi gerado para este documento', 'error')
-                        }
-                      }}
-                    ><Download size={14} /></button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {/* Download */}
+                      <button
+                        className="btn-ghost p-1.5"
+                        title="Download PDF"
+                        onClick={() => {
+                          if (generated.id) {
+                            window.open(`${API}/api/agent-docs/${generated.id}/download`, '_blank')
+                          } else {
+                            toast('PDF ainda não foi gerado', 'error')
+                          }
+                        }}
+                      ><Download size={13} /></button>
+                      {/* Dúvidas — abre chat */}
+                      <button
+                        onClick={() => dispatch({ type: 'OPEN_AGENT_CHAT', payload: {
+                          agentId: generated.agent, taskId: null, operationId: op.id,
+                          subject: `Dúvidas: ${generated.name || expected.name}`,
+                        }})}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-surface-200 text-gray-400 hover:border-gold hover:text-gold transition-colors"
+                      ><MessageSquare size={10} /> Dúvidas</button>
+                      {/* Solicitar Revisão */}
+                      {generated.status !== 'aprovado' && (
+                        <button
+                          onClick={() => setReviewAgent(reviewAgent === generated.agent ? null : generated.agent)}
+                          disabled={!!reviewingAgent}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 transition-colors"
+                        ><CornerDownLeft size={10} /> Revisar</button>
+                      )}
+                      {/* Aprovar */}
+                      {generated.status !== 'aprovado' && (
+                        <button
+                          onClick={() => approveDoc(generated.agent)}
+                          disabled={approvingAgent === generated.agent}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-accent-green text-accent-green hover:bg-accent-green/20 transition-colors"
+                        >
+                          {approvingAgent === generated.agent ? <Loader size={10} className="animate-spin" /> : <CheckCircle size={10} />}
+                          {approvingAgent === generated.agent ? 'Aprovando...' : 'Aprovar'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Painel de revisão expandível */}
+                  {reviewAgent === generated.agent && generated.status !== 'aprovado' && (
+                    <div className="card p-3 -mt-1 mb-1 border-t-0 rounded-t-none">
+                      <p className="text-[10px] text-gray-400 mb-2">Descreva os ajustes — o agente reprocessará com seu feedback:</p>
+                      <textarea
+                        className="input-field text-xs h-16 resize-none mb-2"
+                        placeholder="Ex: Revisar premissa de EBITDA normalizado..."
+                        value={reviewFeedback}
+                        onChange={e => setReviewFeedback(e.target.value)}
+                        disabled={!!reviewingAgent}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => { setReviewAgent(null); setReviewFeedback('') }} className="btn-ghost text-[10px] text-gray-400">Cancelar</button>
+                        <button
+                          onClick={() => requestDocRevision(generated.agent)}
+                          disabled={!reviewFeedback.trim() || !!reviewingAgent}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] border border-amber-400 text-amber-400 hover:bg-amber-400/20"
+                        >
+                          {reviewingAgent === generated.agent ? <Loader size={10} className="animate-spin" /> : <Send size={10} />}
+                          {reviewingAgent === generated.agent ? 'Reprocessando...' : 'Enviar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   </div>
                 )
               }

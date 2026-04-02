@@ -462,70 +462,12 @@ function Thread({ thread }) {
           </div>
         </div>
       )}
-      {/* Approval / Review banner */}
+      {/* Info banner — revisão agora é feita em Documentos Gerados */}
       {thread.awaitingApproval && (
-        op?.paused ? (
-          <div className="flex items-center gap-2 px-4 py-3 mb-3 rounded-lg border border-amber-400/30 bg-amber-400/5">
-            <span className="text-[11px] text-amber-300">Operacao pausada — aprovacao suspensa. Reative a operacao em Operacoes para continuar o pipeline.</span>
-          </div>
-        ) : (
-          <div className="mb-3 rounded-lg border border-surface-200 bg-surface-50 overflow-hidden">
-            {/* Action buttons row */}
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-white">Etapa concluida — revise o output e decida</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">{thread.approvalTaskIds?.length || 0} tarefa(s) aguardando sua decisao</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setReviewMode(!reviewMode)}
-                  disabled={approving || reviewing}
-                  className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 text-xs whitespace-nowrap"
-                >
-                  <CornerDownLeft size={13} />
-                  Solicitar Revisao
-                </button>
-                <button
-                  onClick={approveStage}
-                  disabled={approving || reviewing}
-                  className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-accent-green text-accent-green hover:bg-accent-green/20 text-xs whitespace-nowrap"
-                >
-                  {approving ? <Loader size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                  {approving ? 'Aprovando...' : 'Aprovar e Avancar'}
-                </button>
-              </div>
-            </div>
-
-            {/* Review feedback panel (expandable) */}
-            {reviewMode && (
-              <div className="px-4 pb-3 border-t border-surface-200 pt-3">
-                <p className="text-[11px] text-gray-400 mb-2">Descreva os ajustes necessarios — o agente reprocessara com seu feedback:</p>
-                <textarea
-                  className="input-field text-xs h-20 resize-none mb-2"
-                  placeholder="Ex: O EBITDA normalizado deve considerar o ajuste de IFRS 16. Revisar a premissa de capital de giro — ciclo de 87 dias parece subestimado dado o historico..."
-                  value={reviewFeedback}
-                  onChange={e => setReviewFeedback(e.target.value)}
-                  disabled={reviewing}
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => { setReviewMode(false); setReviewFeedback('') }}
-                    disabled={reviewing}
-                    className="btn-ghost text-xs text-gray-400"
-                  >Cancelar</button>
-                  <button
-                    onClick={requestRevision}
-                    disabled={reviewing || !reviewFeedback.trim()}
-                    className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 border border-amber-400 text-amber-400 hover:bg-amber-400/20 text-xs"
-                  >
-                    {reviewing ? <Loader size={13} className="animate-spin" /> : <Send size={13} />}
-                    {reviewing ? 'Reprocessando...' : 'Enviar Feedback'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )
+        <div className="flex items-center gap-2 px-4 py-3 mb-3 rounded-lg border border-gold/30 bg-gold/5">
+          <CheckCircle size={14} className="text-gold flex-shrink-0" />
+          <span className="text-[11px] text-gray-300">Documento gerado — revise, aprove ou solicite ajustes em <strong className="text-gold">Operações → Documentos Gerados</strong></span>
+        </div>
       )}
 
       {/* Input */}
