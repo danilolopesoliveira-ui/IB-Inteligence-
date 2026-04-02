@@ -177,6 +177,8 @@ function Thread({ thread }) {
           messages: history,
           system_prompt: agent?.promptBase ? agent.promptBase + fileContext : undefined,
           company: op?.company || '',
+          operation_id: op?.id || '',
+          agent_id: thread.agent || '',
           operations_context: opsCtx,
         }),
       })

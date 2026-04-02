@@ -528,7 +528,17 @@ Voce NUNCA deve se recusar a produzir um output por falta de documentos ou infor
 - Se houver documentos ou informacoes faltando, sinalize no INICIO do seu output, de forma clara e objetiva: liste cada item ausente e o impacto especifico que a ausencia causa na sua analise.
 - Indique o que poderia ser aprofundado ou revisado quando cada item faltante for recebido.
 - Conclua sempre com uma avaliacao preliminar e uma recomendacao de proximo passo para o MD.
-- Um output parcial bem fundamentado e melhor do que silencio. O MD revisara e decidira como prosseguir."""
+- Um output parcial bem fundamentado e melhor do que silencio. O MD revisara e decidira como prosseguir.
+
+INSTRUCAO CRITICA — SOBRE O SISTEMA DE DOCUMENTOS:
+Voce opera dentro de uma plataforma de Investment Banking. Quando voce executa uma tarefa via pipeline:
+- Seu output e AUTOMATICAMENTE salvo no banco de dados da plataforma e aparece em "Documentos Gerados" na aba de Operacoes.
+- O MD pode fazer download do seu output a qualquer momento em: Operacoes → operacao → aba Documentos Gerados → botao Download.
+- NUNCA diga ao MD para copiar o conteudo manualmente ou exportar — o documento ja esta salvo e disponivel.
+- NUNCA diga que nao existe repositorio, aba de documentos ou sistema de armazenamento — existe e funciona automaticamente.
+- Se voce tiver um output anterior injetado no system prompt (marcado como "SEU OUTPUT ANTERIOR NESTA OPERACAO"), use-o para responder perguntas do MD sobre o documento — nao diga que o documento nao foi gerado.
+- Se o MD perguntar sobre o status ou localização do documento, responda: "O documento foi gerado e esta disponivel em Operacoes > Documentos Gerados para download."
+- Documentos com status 'em_analise' significam que os arquivos do cliente foram recebidos e estao sendo processados — nao confunda isso com ausencia de documentos."""
 
 AGENT_REVIEW_OUTPUT_RULES = """
 
@@ -1244,17 +1254,62 @@ async def chat_with_md(payload: dict):
         base_prompt = payload.get("system_prompt") or MD_SYSTEM_PROMPT
         ops_context = payload.get("operations_context", "")
         company = payload.get("company", "")
+        operation_id = payload.get("operation_id", "")
+        agent_id = payload.get("agent_id", "")
 
-        # Server-side: sempre buscar documentos pelo nome da empresa
+        # 1. Injetar output anterior do agente (resultado do pipeline)
+        prior_output_section = ""
+        if operation_id and agent_id:
+            from database import get_connection
+            conn = get_connection()
+            task_row = conn.execute(
+                "SELECT result_text, title, completed_at FROM agent_tasks "
+                "WHERE operation_id = ? AND agent_id = ? AND status = 'completed' "
+                "ORDER BY completed_at DESC LIMIT 1",
+                (operation_id, agent_id),
+            ).fetchone()
+            conn.close()
+            if task_row and task_row["result_text"]:
+                prior_output_section = (
+                    f"\n\nSEU OUTPUT ANTERIOR NESTA OPERACAO (gerado via pipeline em {task_row['completed_at'] or 'data desconhecida'}):\n"
+                    f"Tarefa: {task_row['title']}\n\n"
+                    f"{task_row['result_text']}\n\n"
+                    "IMPORTANTE: Voce JA executou esta tarefa e o documento foi salvo automaticamente em 'Documentos Gerados' da operacao. "
+                    "Quando o MD perguntar sobre o documento, refira-se ao output acima. "
+                    "Nao diga que o documento nao existe ou que precisa ser gerado novamente."
+                )
+
+        # 2. Documentos enviados pelo cliente
         file_section = ""
         if company:
             ctx = _get_file_context(company)
             if ctx:
-                file_section = f"\n\nDOCUMENTOS DISPONIVEIS PARA ANALISE — {company}:\n{ctx}"
-            else:
-                file_section = f"\n\nNenhum documento encontrado para {company}. Se o MD mencionar documentos, oriente-o a fazer upload na aba de Operacoes."
+                file_section = f"\n\nDOCUMENTOS DO CLIENTE DISPONIVEIS PARA ANALISE — {company}:\n{ctx}"
+            elif operation_id:
+                # Verificar se ha docs registrados mesmo sem arquivo fisico
+                from database import get_connection
+                conn = get_connection()
+                op_row = conn.execute(
+                    "SELECT client_docs FROM operations WHERE id = ?", (operation_id,)
+                ).fetchone()
+                conn.close()
+                if op_row and op_row["client_docs"]:
+                    import json as _json
+                    try:
+                        cdocs = _json.loads(op_row["client_docs"])
+                        sent = [d for d in cdocs if d.get("files") and len(d["files"]) > 0]
+                        if sent:
+                            file_section = (
+                                f"\n\nDOCUMENTOS DO CLIENTE — {company}:\n"
+                                + "\n".join(f"- {d['label']} [{d.get('status','em_analise')}]" for d in sent)
+                                + "\n\nOs arquivos estao registrados no sistema. O conteudo extraido estara disponivel quando o processamento for concluido."
+                            )
+                        else:
+                            file_section = f"\n\nNenhum documento do cliente recebido ainda para {company}."
+                    except Exception:
+                        file_section = f"\n\nNenhum documento do cliente recebido ainda para {company}."
 
-        system = base_prompt + (ops_context if ops_context else "") + file_section + CHAT_FORMAT_RULES
+        system = base_prompt + (ops_context if ops_context else "") + prior_output_section + file_section + CHAT_FORMAT_RULES
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=2048,
