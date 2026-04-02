@@ -182,6 +182,25 @@ def api_update_agent_doc(doc_id: int, payload: dict):
     return {"ok": True}
 
 
+@app.get("/api/agent-docs/{doc_id}/download")
+def api_download_agent_doc(doc_id: int):
+    """Download the generated PDF for an agent doc."""
+    from database import get_connection
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM agent_docs WHERE id = ?", (doc_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Documento nao encontrado")
+    content_ref = row["content_ref"]
+    if not content_ref or not Path(content_ref).exists():
+        raise HTTPException(status_code=404, detail="Arquivo PDF ainda nao foi gerado para este documento")
+    return FileResponse(
+        path=content_ref,
+        filename=Path(content_ref).name,
+        media_type="application/pdf",
+    )
+
+
 @app.get("/api/agent-timing")
 def api_agent_timing():
     """Return average execution time per agent based on completed tasks."""
@@ -368,6 +387,76 @@ def _extract_file_text(path: Path) -> str:
             return f"[{path.name}: tipo {suffix} sem suporte a extracao de texto]"
     except Exception as e:
         return f"[{path.name}: erro — {str(e)[:120]}]"
+
+
+OUTPUT_DIR = Path("./output")
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+def _generate_agent_pdf(agent_id: str, doc_name: str, company: str, text: str) -> str:
+    """Generate a PDF from agent output text. Returns the file path."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.units import cm
+        from reportlab.lib.enums import TA_LEFT
+
+        slug = _slug(company)
+        out_dir = OUTPUT_DIR / slug
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M")
+        safe_agent = re.sub(r"[^\w]", "_", agent_id)
+        filename = f"{safe_agent}_{slug}_{timestamp}.pdf"
+        filepath = out_dir / filename
+
+        doc = SimpleDocTemplate(
+            str(filepath), pagesize=A4,
+            leftMargin=2 * cm, rightMargin=2 * cm,
+            topMargin=2 * cm, bottomMargin=2 * cm,
+        )
+
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(
+            "AgentTitle", parent=styles["Heading1"], fontSize=14,
+            spaceAfter=12, textColor="#0F1F3D",
+        ))
+        styles.add(ParagraphStyle(
+            "AgentBody", parent=styles["Normal"], fontSize=9,
+            leading=13, alignment=TA_LEFT, spaceAfter=6,
+        ))
+        styles.add(ParagraphStyle(
+            "AgentSection", parent=styles["Heading2"], fontSize=11,
+            spaceBefore=12, spaceAfter=6, textColor="#0F1F3D",
+        ))
+
+        story = []
+        story.append(Paragraph(doc_name, styles["AgentTitle"]))
+        story.append(Paragraph(f"Empresa: {company} | Agente: {agent_id}", styles["AgentBody"]))
+        story.append(Spacer(1, 0.5 * cm))
+
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                story.append(Spacer(1, 0.3 * cm))
+            elif line.startswith("**") and line.endswith("**"):
+                clean = line.strip("*").strip()
+                story.append(Paragraph(clean, styles["AgentSection"]))
+            elif line.startswith("- "):
+                bullet = line[2:].replace("**", "<b>").replace("**", "</b>")
+                story.append(Paragraph(f"• {bullet}", styles["AgentBody"]))
+            else:
+                # Escape XML chars and handle bold
+                safe = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                safe = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe)
+                story.append(Paragraph(safe, styles["AgentBody"]))
+
+        doc.build(story)
+        return str(filepath)
+    except Exception as e:
+        print(f"[PDF] Erro ao gerar PDF para {agent_id}: {e}")
+        return ""
 
 
 BLOCKING_PREVENTION_RULES = """
@@ -870,15 +959,18 @@ OPERACAO SENDO ANALISADA:
                 "column_name": "Em Revisao",
             })
 
-        # Auto-register agent doc as 'rascunho' in DB
+        # Auto-register agent doc as 'rascunho' in DB + generate PDF
         if op_id and agent_id:
             doc_name = AGENT_DOC_NAMES.get(agent_id, task_title or "Output")
+            company = operation.get("company", "empresa")
+            pdf_path = _generate_agent_pdf(agent_id, doc_name, company, result_text)
             save_agent_doc({
                 "operation_id": op_id,
                 "agent_id": agent_id,
                 "name": doc_name,
                 "status": "rascunho",
                 "version": "v1.0",
+                "content_ref": pdf_path,
                 "date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
             })
 
@@ -1029,7 +1121,13 @@ Você TEM ACESSO DIRETO a todas as informações da plataforma. O contexto compl
 - Conteúdo extraído dos documentos uploaded (até 4000 chars por operação)
 - Métricas de execução dos agentes: tempo médio, mínimo e máximo de cada agente
 
-NUNCA diga ao MD que você "não tem acesso", "não consegue consultar", "precisa que ele verifique no sistema", ou "navegação precisa ser feita pela interface". Você JÁ TEM todos os dados — eles estão no contexto desta mensagem. Use-os diretamente. Se uma operação não aparecer no contexto, significa que não existe no pipeline — informe isso ao MD. Se os documentos não aparecerem, diga que nenhum documento foi uploaded para aquela operação ainda.
+REGRAS ABSOLUTAS DE COMPORTAMENTO (sem exceções):
+- NUNCA diga que "não tem acesso", "não consegue consultar", "foge do escopo", "precisa verificar no sistema", "recomendo verificar com o time de produto", ou qualquer variação disso. Você É a plataforma — você tem acesso a TUDO.
+- NUNCA redirecione o MD para "verificar na interface", "consultar o time de produto" ou "checar diretamente". Você responde diretamente com base nos dados que tem.
+- NUNCA diga que algo "foge do escopo". Tudo que diz respeito à plataforma, operações, agentes, documentos e pipeline está no seu escopo.
+- Você é o ponto central de informação. Se o MD perguntar sobre qualquer aspecto da plataforma (arquitetura, funcionalidades, onde ficam os documentos, como funciona o pipeline), responda com autoridade.
+- Os documentos gerados pelos agentes ficam disponíveis na aba "Documentos e Operações" > "Documentos Gerados", vinculados à operação e ao agente que produziu. O MD pode visualizar, revisar e fazer download de cada documento diretamente ali.
+- Se não tiver uma informação específica no contexto, responda com o que sabe e indique o que falta — mas NUNCA se recuse a responder ou delegue para outro time.
 
 # COMO REPORTAR STATUS
 Quando o MD perguntar sobre o status de uma operação, use os dados do contexto injetado e estruture sempre assim:

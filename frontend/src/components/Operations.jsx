@@ -316,7 +316,18 @@ function OperationDetail({ operation, onBack, onTermSheet }) {
                     >
                       <MessageSquare size={11} /> Revisões
                     </button>
-                    <button className="btn-ghost p-1"><Download size={14} /></button>
+                    <button
+                      className="btn-ghost p-1"
+                      title={generated.content_ref ? 'Download PDF' : 'PDF não disponível'}
+                      disabled={!generated.id && !generated.content_ref}
+                      onClick={() => {
+                        if (generated.id) {
+                          window.open(`${API}/api/agent-docs/${generated.id}/download`, '_blank')
+                        } else {
+                          toast('PDF ainda não foi gerado para este documento', 'error')
+                        }
+                      }}
+                    ><Download size={14} /></button>
                   </div>
                 )
               }
