@@ -185,6 +185,8 @@ function Thread({ thread }) {
       if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
       if (!data.text) throw new Error('Resposta vazia do servidor')
       dispatch({ type: 'ADD_AGENT_RESPONSE', payload: { threadId: thread.id, agentId: thread.agent, text: data.text } })
+      // Thread esta aberto — marcar como lido imediatamente
+      dispatch({ type: 'MARK_THREAD_READ', payload: thread.id })
     } catch (err) {
       console.error('[Thread] Erro:', err)
       toast(`Erro: ${err.message}`, 'error')
@@ -570,6 +572,12 @@ export default function ReviewsComm() {
   const { state, dispatch, toast } = useApp()
   const { messages } = state
   const [selectedThread, setSelectedThread] = useState(messages[0]?.id || null)
+
+  // Marca thread como lida ao selecionar
+  const selectThread = (id) => {
+    setSelectedThread(id)
+    if (id) dispatch({ type: 'MARK_THREAD_READ', payload: id })
+  }
   const [filterStatus, setFilterStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [showNewThread, setShowNewThread] = useState(false)
@@ -582,7 +590,7 @@ export default function ReviewsComm() {
     // Verifica se já existe thread aberta para esse agente+operação
     const existing = messages.find(m => m.agent === agentId && m.operation === operationId && m.status === 'aberto')
     if (existing) {
-      setSelectedThread(existing.id)
+      selectThread(existing.id)
       return
     }
     // Cria nova thread
@@ -599,7 +607,7 @@ export default function ReviewsComm() {
       unread: 0,
     }
     dispatch({ type: 'ADD_THREAD', payload: newThread })
-    setSelectedThread(newThread.id)
+    selectThread(newThread.id)
     toast('Conversa aberta com o agente', 'info')
   }, [state.pendingThreadOpen])
 
@@ -626,7 +634,7 @@ export default function ReviewsComm() {
 
   return (
     <div className="h-full flex flex-col">
-      {showNewThread && <NewThreadModal onClose={(id) => { setShowNewThread(false); if (id) setSelectedThread(id) }} />}
+      {showNewThread && <NewThreadModal onClose={(id) => { setShowNewThread(false); if (id) selectThread(id) }} />}
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-xl font-bold text-white font-editorial">Revisoes & Comunicacao</h2>
         <button onClick={() => setShowNewThread(true)} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3">
@@ -677,7 +685,7 @@ export default function ReviewsComm() {
               return (
                 <button
                   key={m.id}
-                  onClick={() => setSelectedThread(m.id)}
+                  onClick={() => selectThread(m.id)}
                   className={`w-full text-left p-3 rounded-lg transition-all ${
                     selectedThread === m.id ? 'bg-gold/10 border border-gold/20' : 'hover:bg-surface-100 border border-transparent'
                   }`}

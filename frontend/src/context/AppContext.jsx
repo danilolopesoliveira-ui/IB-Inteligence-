@@ -304,6 +304,13 @@ function reducer(state, action) {
       try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
       return { ...state, operations, tasks, messages }
     }
+    case 'MARK_THREAD_READ': {
+      const messages = state.messages.map(m =>
+        m.id === action.payload ? { ...m, unread: 0 } : m
+      )
+      try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
+      return { ...state, messages }
+    }
     case 'ADD_THREAD': {
       const messages = [action.payload, ...state.messages]
       try { localStorage.setItem('ib_thread_messages', JSON.stringify(messages)) } catch {}
@@ -369,15 +376,38 @@ function reducer(state, action) {
     case 'INIT_FROM_SERVER': {
       const { operations: serverOps, tasks: serverTasks } = action.payload
       if (!serverOps || serverOps.length === 0) return state
-      // Server is source of truth — merge agentDocs from server into operations
+
+      // Merge server operations into local state (server has agentDocs, clientDocs etc.)
+      // Prefer local operations for fields the user controls (paused, pendingDocs)
+      const localOpMap = Object.fromEntries(state.operations.map(o => [o.id, o]))
       const operations = serverOps.map(op => ({
         ...op,
         agentDocs: op.agentDocs || [],
+        // keep local paused/pendingDocs if they exist
+        ...(localOpMap[op.id] ? {
+          paused: localOpMap[op.id].paused,
+          pendingDocs: localOpMap[op.id].pendingDocs,
+        } : {}),
       }))
-      // Map server tasks back to frontend format
-      const tasks = serverTasks && serverTasks.length > 0 ? serverTasks : state.tasks
+      // Add local operations that don't exist on server yet
+      state.operations.forEach(o => {
+        if (!operations.find(s => s.id === o.id)) operations.push(o)
+      })
+
+      // For tasks: use localStorage as source of truth for column (user approvals live here).
+      // Only add server tasks that don't exist locally (e.g. created on another session).
+      const localTaskIds = new Set(state.tasks.map(t => t.id))
+      const newServerTasks = serverTasks
+        ? serverTasks.filter(t => !localTaskIds.has(t.id))
+        : []
+      const tasks = newServerTasks.length > 0
+        ? [...state.tasks, ...newServerTasks]
+        : state.tasks
+
       try { localStorage.setItem('ib_operations', JSON.stringify(operations)) } catch {}
-      try { localStorage.setItem('ib_tasks', JSON.stringify(tasks)) } catch {}
+      if (newServerTasks.length > 0) {
+        try { localStorage.setItem('ib_tasks', JSON.stringify(tasks)) } catch {}
+      }
       return { ...state, operations, tasks }
     }
     case 'ADD_PROPOSAL':
